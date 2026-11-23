@@ -37,6 +37,11 @@
       <p id="next-secondary-description" class="muted"></p>
     </section>
 
+    <section id="tertiary-navigation-card" class="panel" hidden>
+      <a id="next-tertiary" class="service-link" href="/"></a>
+      <p id="next-tertiary-description" class="muted"></p>
+    </section>
+
     <section id="salary-panel" class="panel" hidden>
       <form id="salary-form" method="post">
         <label for="message">Your message</label>
@@ -69,6 +74,26 @@
       </form>
     </section>
 
+    <section id="holiday-panel" class="panel" hidden>
+      <form id="holiday-form" method="post">
+        <label for="holiday-start-date">First day of holiday</label>
+        <input id="holiday-start-date" name="start_date" type="date" required>
+        <label for="holiday-end-date">Last day of holiday</label>
+        <input id="holiday-end-date" name="end_date" type="date" required>
+        <label for="holiday-reason">Why are you requesting this holiday?</label>
+        <textarea
+          id="holiday-reason"
+          name="reason"
+          rows="6"
+          maxlength="3000"
+          placeholder="Enter the reason for your holiday request."
+          required
+        ></textarea>
+        <button type="submit">Submit holiday request</button>
+        <p id="holiday-feedback" class="feedback" role="status" aria-live="polite" hidden></p>
+      </form>
+    </section>
+
     <section id="inbox-panel" class="panel" aria-label="HR messages" hidden>
       <div class="inbox-heading">
         <h2>Messages</h2>
@@ -78,6 +103,16 @@
       <p id="inbox-feedback" class="feedback" role="status" aria-live="polite" hidden></p>
       <ol id="messages"></ol>
       <button id="load-more" class="secondary" type="button" hidden>Load more</button>
+    </section>
+
+    <section id="holiday-requests-panel" class="panel" aria-label="Employee holiday requests" hidden>
+      <div class="inbox-heading">
+        <h2>Holiday requests</h2>
+        <button id="refresh-holidays" class="secondary" type="button">Refresh</button>
+      </div>
+      <p id="holiday-requests-feedback" class="feedback" role="status" aria-live="polite" hidden></p>
+      <ol id="holiday-requests"></ol>
+      <button id="load-more-holidays" class="secondary" type="button" hidden>Load more</button>
     </section>
   </main>
 </body>

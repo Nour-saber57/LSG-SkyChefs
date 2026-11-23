@@ -11,6 +11,7 @@ const pages = {
     back: ["/dashboard", "Employee dashboard"],
     next: ["/hr-services/salary", "Salary", "Send HR a question about your salary or payslip."],
     nextSecondary: ["/hr-services/hr-letter", "HR Letter", "Write and send an HR letter request."],
+    nextTertiary: ["/hr-services/holidays", "Holiday request", "Choose your holiday dates and send HR your request."],
   },
   "/hr-services/salary": {
     title: "Salary",
@@ -24,16 +25,29 @@ const pages = {
     back: ["/hr-services", "HR Services"],
     panel: "hr-letter-panel",
   },
+  "/hr-services/holidays": {
+    title: "Holiday request",
+    description: "Choose the dates you would like to take off and tell HR why.",
+    back: ["/hr-services", "HR Services"],
+    panel: "holiday-panel",
+  },
   "/admin/dashboard": {
     title: "Admin dashboard",
-    description: "Review inquiries submitted by employees.",
+    description: "Review requests and inquiries submitted by employees.",
     next: ["/admin/hr-inbox", "HR Inbox", "Open the latest messages sent to HR."],
+    nextSecondary: ["/admin/holiday-requests", "Holiday requests", "Review holiday requests submitted by employees."],
   },
   "/admin/hr-inbox": {
     title: "HR Inbox",
     description: "Employee messages, newest first.",
     back: ["/admin/dashboard", "Admin dashboard"],
     panel: "inbox-panel",
+  },
+  "/admin/holiday-requests": {
+    title: "Holiday requests",
+    description: "Employee holiday requests, newest first.",
+    back: ["/admin/dashboard", "Admin dashboard"],
+    panel: "holiday-requests-panel",
   },
 };
 
@@ -93,6 +107,11 @@ function showPage() {
     const link = byId("next-secondary");
     [link.href, link.textContent, byId("next-secondary-description").textContent] = page.nextSecondary;
     byId("secondary-navigation-card").hidden = false;
+  }
+  if (page.nextTertiary) {
+    const link = byId("next-tertiary");
+    [link.href, link.textContent, byId("next-tertiary-description").textContent] = page.nextTertiary;
+    byId("tertiary-navigation-card").hidden = false;
   }
   if (page.panel) byId(page.panel).hidden = false;
 }
@@ -154,6 +173,43 @@ bindRequestForm(
   "Write your HR Letter request before sending.",
 );
 
+const holidayForm = byId("holiday-form");
+holidayForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const startDate = byId("holiday-start-date").value;
+  const endDate = byId("holiday-end-date").value;
+  const reason = byId("holiday-reason").value.trim();
+  if (endDate < startDate) {
+    feedback("holiday-feedback", "The last day must be on or after the first day.", "error");
+    byId("holiday-end-date").focus();
+    return;
+  }
+  if (!reason) {
+    feedback("holiday-feedback", "Enter a reason for your holiday request.", "error");
+    byId("holiday-reason").focus();
+    return;
+  }
+
+  const submit = holidayForm.querySelector("button");
+  submit.disabled = true;
+  logout.disabled = true;
+  feedback("holiday-feedback", "");
+  try {
+    const result = await post("/api/v1/hr/services/holidays/requests", {
+      start_date: startDate,
+      end_date: endDate,
+      reason,
+    });
+    holidayForm.reset();
+    feedback("holiday-feedback", result.confirmation, "success");
+  } catch (error) {
+    feedback("holiday-feedback", error.message, "error");
+  } finally {
+    submit.disabled = false;
+    logout.disabled = false;
+  }
+});
+
 const refresh = byId("refresh");
 const loadMore = byId("load-more");
 const pageSize = 50;
@@ -203,6 +259,55 @@ async function loadInbox(append = false) {
 refresh.addEventListener("click", () => loadInbox());
 loadMore.addEventListener("click", () => loadInbox(true));
 
+const refreshHolidays = byId("refresh-holidays");
+const loadMoreHolidays = byId("load-more-holidays");
+let beforeHolidayId;
+
+function appendHolidayRequest(item) {
+  const entry = document.createElement("li");
+  const sender = document.createElement("h3");
+  sender.textContent = item.employee_name;
+  const dates = document.createElement("p");
+  dates.className = "muted";
+  const start = new Date(item.start_date + "T00:00:00");
+  const end = new Date(item.end_date + "T00:00:00");
+  dates.textContent = `Holiday: ${new Intl.DateTimeFormat("en-EG", { dateStyle: "medium" }).format(start)} – ${new Intl.DateTimeFormat("en-EG", { dateStyle: "medium" }).format(end)}`;
+  const submitted = document.createElement("p");
+  submitted.className = "muted";
+  submitted.textContent = "Submitted " + dateFormat.format(new Date(item.created_at)) + " Cairo";
+  const reason = document.createElement("p");
+  reason.className = "message-body";
+  reason.textContent = item.reason;
+  entry.append(sender, dates, submitted, reason);
+  byId("holiday-requests").append(entry);
+}
+
+async function loadHolidayRequests(append = false) {
+  const query = new URLSearchParams({ limit: pageSize });
+  if (append) query.set("before_id", beforeHolidayId);
+  refreshHolidays.disabled = true;
+  loadMoreHolidays.disabled = true;
+  feedback("holiday-requests-feedback", "Loading holiday requests…");
+
+  try {
+    const entries = await request("/api/v1/admin/hr/holiday-requests?" + query);
+    if (!append) byId("holiday-requests").replaceChildren();
+    entries.forEach(appendHolidayRequest);
+    beforeHolidayId = entries.at(-1)?.id;
+    loadMoreHolidays.hidden = entries.length < pageSize;
+    const emptyText = append ? "No more holiday requests." : "No holiday requests yet.";
+    feedback("holiday-requests-feedback", entries.length ? "" : emptyText);
+  } catch (error) {
+    feedback("holiday-requests-feedback", error.message, "error");
+  } finally {
+    refreshHolidays.disabled = false;
+    loadMoreHolidays.disabled = false;
+  }
+}
+
+refreshHolidays.addEventListener("click", () => loadHolidayRequests());
+loadMoreHolidays.addEventListener("click", () => loadHolidayRequests(true));
+
 async function start() {
   showPage();
   try {
@@ -212,6 +317,7 @@ async function start() {
     feedback("session-feedback", error.message, "error");
   }
   if (page.panel === "inbox-panel") await loadInbox();
+  if (page.panel === "holiday-requests-panel") await loadHolidayRequests();
 }
 
 start();

@@ -5,6 +5,26 @@
   background: #f3f6fb;
 }
 
+#holiday-requests {
+  display: grid;
+  gap: 1rem;
+  margin: 1rem 0;
+  padding: 0;
+  list-style: none;
+}
+
+#holiday-requests li {
+  padding: 1rem;
+  border: 1px solid #dce3ed;
+  border-radius: 0.75rem;
+  background: #fff;
+}
+
+#holiday-requests h3,
+#holiday-requests p {
+  margin: 0.35rem 0;
+}
+
 * {
   box-sizing: border-box;
 }
@@ -26,7 +46,8 @@ a {
 
 a:focus-visible,
 button:focus-visible,
-textarea:focus-visible {
+textarea:focus-visible,
+input:focus-visible {
   outline: 3px solid #f5a623;
   outline-offset: 3px;
 }
@@ -110,6 +131,21 @@ textarea {
   border: 1px solid #aeb9ca;
   border-radius: 0.5rem;
   resize: vertical;
+}
+
+input[type="date"] {
+  display: block;
+  width: 100%;
+  margin: 0.5rem 0 1rem;
+  padding: 0.8rem;
+  border: 1px solid #aeb9ca;
+  border-radius: 0.5rem;
+  font: inherit;
+}
+
+label {
+  display: block;
+  font-weight: 700;
 }
 
 button {
