@@ -1,5 +1,4 @@
 from contextlib import asynccontextmanager
-from html import escape
 import hashlib
 import re
 import secrets
@@ -10,13 +9,13 @@ from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
 
 from pydantic import AliasChoices, BaseModel, ConfigDict, Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from pwdlib import PasswordHash
 
 from sqlalchemy import (
-    Boolean,
     ForeignKey,
     Integer,
     String,
@@ -28,7 +27,6 @@ from sqlalchemy import (
 )
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import (
-    DeclarativeBase,
     Mapped,
     Session,
     mapped_column,
@@ -36,7 +34,14 @@ from sqlalchemy.orm import (
 )
 
 from starlette.middleware.trustedhost import TrustedHostMiddleware
-
+if __package__ == "login":
+    from database import Base, User
+    from hr_services.HrLetter import create_hr_letter_router
+    from hr_services.salary import create_salary_router
+else:
+    from ..database import Base, User
+    from ..hr_services.HrLetter import create_hr_letter_router
+    from ..hr_services.salary import create_salary_router
 
 # --------------------------------------------------
 # Configuration
@@ -73,36 +78,6 @@ class Settings(BaseSettings):
 # --------------------------------------------------
 # Database models
 # --------------------------------------------------
-
-class Base(DeclarativeBase):
-    pass
-
-
-class User(Base):
-    __tablename__ = "users"
-
-    id: Mapped[int] = mapped_column(primary_key=True)
-
-    # An employee ID OR work email.
-    identity: Mapped[str] = mapped_column(
-        String(254),
-        unique=True,
-        index=True,
-    )
-
-    name: Mapped[str] = mapped_column(String(150))
-
-    password_hash: Mapped[str] = mapped_column(
-        String(512)
-    )
-
-    # "user" or "admin"
-    role: Mapped[str] = mapped_column(String(20))
-
-    active: Mapped[bool] = mapped_column(
-        Boolean,
-        default=True,
-    )
 
 
 class LoginSession(Base):
@@ -297,22 +272,13 @@ LOGIN_PAGE = """<!doctype html>
 </html>"""
 
 
-def dashboard_page(title: str, name: str) -> str:
-    return f"""<!doctype html>
-<html lang="en">
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>{title} | SkyChef</title>
-<main><h1>{title}</h1><p>Welcome, {escape(name)}.</p></main>
-</html>"""
-
-
 # --------------------------------------------------
 # Application factory
 # --------------------------------------------------
 
 def create_app(settings: Settings | None = None) -> FastAPI:
     settings = settings or Settings()
+    frontend_dir = Path(__file__).resolve().parents[2] / "frontend"
 
     connect_args = {}
     database_url = settings.database_url
@@ -358,6 +324,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     app.state.session_factory = session_factory
     app.state.settings = settings
+    app.mount(
+        "/assets",
+        StaticFiles(directory=frontend_dir),
+        name="assets",
+    )
 
     app.add_middleware(
         TrustedHostMiddleware,
@@ -489,6 +460,22 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if not token or not secrets.compare_digest(digest(token), auth[0].csrf_hash):
             raise HTTPException(status_code=403, detail="Invalid CSRF token")
         return auth
+
+    app.include_router(
+        create_salary_router(
+            get_db=get_db,
+            require_user=require_user,
+            require_admin=require_admin,
+            require_csrf=require_csrf,
+        )
+    )
+    app.include_router(
+        create_hr_letter_router(
+            get_db=get_db,
+            require_user=require_user,
+            require_csrf=require_csrf,
+        )
+    )
 
     # --------------------------------------------------
     # Login throttling
@@ -868,16 +855,34 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.get("/", response_class=HTMLResponse, include_in_schema=False)
     def sign_in_page():
-        frontend = Path(__file__).resolve().parents[2] / "frontend" / "index.html"
-        return FileResponse(frontend)
+        return FileResponse(frontend_dir / "index.html")
 
-    @app.get("/admin/dashboard", response_class=HTMLResponse, include_in_schema=False)
-    def admin_dashboard_page(user: User = Depends(require_admin)):
-        return dashboard_page("Admin dashboard", user.name)
+    def workspace_page():
+        return FileResponse(frontend_dir / "workspace.html")
 
     @app.get("/dashboard", response_class=HTMLResponse, include_in_schema=False)
     def employee_dashboard_page(user: User = Depends(require_user)):
-        return dashboard_page("Employee dashboard", user.name)
+        return workspace_page()
+
+    @app.get("/hr-services", response_class=HTMLResponse, include_in_schema=False)
+    def hr_services_page(user: User = Depends(require_user)):
+        return workspace_page()
+
+    @app.get("/hr-services/salary", response_class=HTMLResponse, include_in_schema=False)
+    def salary_page(user: User = Depends(require_user)):
+        return workspace_page()
+
+    @app.get("/hr-services/hr-letter", response_class=HTMLResponse, include_in_schema=False)
+    def hr_letter_page(user: User = Depends(require_user)):
+        return workspace_page()
+
+    @app.get("/admin/dashboard", response_class=HTMLResponse, include_in_schema=False)
+    def admin_dashboard_page(user: User = Depends(require_admin)):
+        return workspace_page()
+
+    @app.get("/admin/hr-inbox", response_class=HTMLResponse, include_in_schema=False)
+    def admin_hr_inbox_page(user: User = Depends(require_admin)):
+        return workspace_page()
 
     @app.get("/api/v1/admin/dashboard")
     def admin_dashboard(
