@@ -37,10 +37,12 @@ from starlette.middleware.trustedhost import TrustedHostMiddleware
 if __package__ == "login":
     from database import Base, User
     from hr_services.HrLetter import create_hr_letter_router
+    from hr_services.holidays import create_holidays_router
     from hr_services.salary import create_salary_router
 else:
     from ..database import Base, User
     from ..hr_services.HrLetter import create_hr_letter_router
+    from ..hr_services.holidays import create_holidays_router
     from ..hr_services.salary import create_salary_router
 
 # --------------------------------------------------
@@ -476,6 +478,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             require_csrf=require_csrf,
         )
     )
+    app.include_router(
+        create_holidays_router(
+            get_db=get_db,
+            require_user=require_user,
+            require_admin=require_admin,
+            require_csrf=require_csrf,
+        )
+    )
 
     # --------------------------------------------------
     # Login throttling
@@ -876,12 +886,20 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     def hr_letter_page(user: User = Depends(require_user)):
         return workspace_page()
 
+    @app.get("/hr-services/holidays", response_class=HTMLResponse, include_in_schema=False)
+    def holidays_page(user: User = Depends(require_user)):
+        return workspace_page()
+
     @app.get("/admin/dashboard", response_class=HTMLResponse, include_in_schema=False)
     def admin_dashboard_page(user: User = Depends(require_admin)):
         return workspace_page()
 
     @app.get("/admin/hr-inbox", response_class=HTMLResponse, include_in_schema=False)
     def admin_hr_inbox_page(user: User = Depends(require_admin)):
+        return workspace_page()
+
+    @app.get("/admin/holiday-requests", response_class=HTMLResponse, include_in_schema=False)
+    def admin_holiday_requests_page(user: User = Depends(require_admin)):
         return workspace_page()
 
     @app.get("/api/v1/admin/dashboard")
