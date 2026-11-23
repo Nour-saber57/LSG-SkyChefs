@@ -1,5 +1,7 @@
 from contextlib import asynccontextmanager
+from html import escape
 import hashlib
+import re
 import secrets
 import time
 from pathlib import Path
@@ -7,9 +9,9 @@ from pathlib import Path
 from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 
-from pydantic import BaseModel, ConfigDict, Field, SecretStr
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from pwdlib import PasswordHash
 
@@ -20,6 +22,7 @@ from sqlalchemy import (
     String,
     create_engine,
     delete,
+    inspect,
     select,
     update,
 )
@@ -136,6 +139,26 @@ class LoginLimit(Base):
     )
 
 
+def initialize_database(engine):
+    with engine.begin() as connection:
+        Base.metadata.create_all(connection)
+        if connection.dialect.name == "sqlite":
+            create_view = "CREATE VIEW IF NOT EXISTS"
+            existing_views = ()
+        else:
+            create_view = "CREATE VIEW"
+            existing_views = inspect(connection).get_view_names()
+
+        # The users table owns the role and keeps each identity unique.
+        for view, role in (("admin_emails", "admin"), ("employee_emails", "user")):
+            if view not in existing_views:
+                connection.exec_driver_sql(
+                    f"{create_view} {view} AS "
+                    "SELECT identity AS email, name, active FROM users "
+                    f"WHERE role = '{role}' AND identity LIKE '%@%'"
+                )
+
+
 # --------------------------------------------------
 # Request / response schemas
 # --------------------------------------------------
@@ -147,6 +170,7 @@ class Credentials(BaseModel):
     identity: str = Field(
         min_length=1,
         max_length=254,
+        validation_alias=AliasChoices("identity", "email"),
     )
 
     password: SecretStr = Field(
@@ -173,7 +197,11 @@ class LoginResult(BaseModel):
 class AccountCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    identity: str = Field(min_length=1, max_length=254)
+    identity: str = Field(
+        min_length=1,
+        max_length=254,
+        validation_alias=AliasChoices("identity", "email"),
+    )
     name: str = Field(min_length=1, max_length=150)
     password: SecretStr = Field(min_length=12, max_length=1024)
 
@@ -195,6 +223,85 @@ COOKIE_NAME = "skychef_session"
 
 def digest(value: str) -> str:
     return hashlib.sha256(value.encode()).hexdigest()
+
+
+def normalize_work_email(value: str) -> str:
+    email = value.strip().casefold()
+    if len(email) > 254 or not re.fullmatch(r"[^\s@]+@[^\s@.]+(?:\.[^\s@.]+)+", email):
+        raise ValueError("Provide a valid work email.")
+    return email
+
+
+LOGIN_PAGE = """<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SkyChef sign in</title>
+<style>
+  body { max-width: 26rem; margin: 12vh auto; padding: 0 1rem;
+         font: 1rem system-ui, sans-serif; color: #172536; background: #f5f7fa; }
+  main { padding: 2rem; background: white; border: 1px solid #d6dde5; border-radius: 1rem; }
+  h1 { margin-top: 0; }
+  #login { display: grid; gap: 0.5rem; }
+  input, button { font: inherit; padding: 0.65rem; border-radius: 0.4rem; }
+  input { border: 1px solid #687b90; margin-bottom: 0.5rem; }
+  button { color: white; background: #173f66; border: 0; cursor: pointer; }
+  #login-error { color: #9c2832; }
+  #login-error:empty { display: none; }
+</style>
+<main>
+  <h1>Sign in to SkyChef</h1>
+  <form id="login" method="post">
+    <label for="identity">Work email or employee ID</label>
+    <input id="identity" name="identity" autocomplete="username" maxlength="254" required>
+    <label for="password">Password</label>
+    <input id="password" name="password" type="password" autocomplete="current-password"
+           maxlength="1024" required>
+    <button type="submit">Sign in</button>
+    <p id="login-error" role="alert"></p>
+  </form>
+</main>
+<script>
+  const form = document.querySelector('#login');
+  const button = form.querySelector('button');
+  const error = document.querySelector('#login-error');
+  form.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    button.disabled = true;
+    error.textContent = '';
+    try {
+      const response = await fetch('/api/v1/auth/login', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(Object.fromEntries(new FormData(form)))
+      });
+      if (response.ok) {
+        const { redirect_to } = await response.json();
+        window.location.assign(redirect_to);
+        return;
+      }
+      error.textContent = response.status === 429
+        ? 'Too many sign-in attempts. Try again later.'
+        : 'Unable to sign in. Check your email or employee ID and password.';
+    } catch {
+      error.textContent = 'Unable to reach SkyChef. Try again.';
+    } finally {
+      button.disabled = false;
+    }
+  });
+</script>
+</html>"""
+
+
+def dashboard_page(title: str, name: str) -> str:
+    return f"""<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{title} | SkyChef</title>
+<main><h1>{title}</h1><p>Welcome, {escape(name)}.</p></main>
+</html>"""
 
 
 # --------------------------------------------------
@@ -234,7 +341,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     async def lifespan(app):
         # Suitable for this starter.
         # Introduce migrations before production.
-        Base.metadata.create_all(engine)
+        initialize_database(engine)
 
         yield
 
@@ -338,6 +445,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             or login_session.expires_at <= int(time.time())
             or not user
             or not user.active
+            or user.role not in {"admin", "user"}
         ):
             raise HTTPException(
                 status_code=401,
@@ -372,6 +480,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             )
 
         return user
+
+    def require_csrf(request: Request, auth=Depends(get_current_session)):
+        token = request.headers.get("X-CSRF-Token", "")
+        if not token or not secrets.compare_digest(digest(token), auth[0].csrf_hash):
+            raise HTTPException(status_code=403, detail="Invalid CSRF token")
+        return auth
 
     # --------------------------------------------------
     # Login throttling
@@ -488,6 +602,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             not valid_password
             or not user
             or not user.active
+            or user.role not in {"admin", "user"}
             or (
                 expected_role
                 and user.role != expected_role
@@ -569,18 +684,22 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         "/api/v1/auth/register",
         response_model=PublicUser,
         status_code=201,
+        dependencies=[Depends(require_admin), Depends(require_csrf)],
     )
     def register_account(
         payload: AccountCreate,
         db: Session = Depends(get_db),
     ):
-        identity = payload.identity.strip().casefold()
+        try:
+            identity = normalize_work_email(payload.identity)
+        except ValueError as error:
+            raise HTTPException(status_code=422, detail=str(error)) from error
         name = payload.name.strip()
 
-        if not identity or not name:
+        if not name:
             raise HTTPException(
                 status_code=422,
-                detail="Identity and name are required",
+                detail="Name is required",
             )
 
         existing_user = db.scalar(
@@ -720,30 +839,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         status_code=204,
     )
     def logout(
-        request: Request,
         response: Response,
-        auth=Depends(get_current_session),
+        auth=Depends(require_csrf),
         db: Session = Depends(get_db),
     ):
-        csrf_token = request.headers.get(
-            "X-CSRF-Token",
-            "",
-        )
-
-        valid_csrf = (
-            csrf_token
-            and secrets.compare_digest(
-                digest(csrf_token),
-                auth[0].csrf_hash,
-            )
-        )
-
-        if not valid_csrf:
-            raise HTTPException(
-                status_code=403,
-                detail="Invalid CSRF token",
-            )
-
         db.execute(
             delete(LoginSession).where(
                 LoginSession.token_hash == auth[0].token_hash
@@ -763,6 +862,18 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # --------------------------------------------------
     # Protected route examples
     # --------------------------------------------------
+
+    @app.get("/", response_class=HTMLResponse, include_in_schema=False)
+    def sign_in_page():
+        return LOGIN_PAGE
+
+    @app.get("/admin/dashboard", response_class=HTMLResponse, include_in_schema=False)
+    def admin_dashboard_page(user: User = Depends(require_admin)):
+        return dashboard_page("Admin dashboard", user.name)
+
+    @app.get("/dashboard", response_class=HTMLResponse, include_in_schema=False)
+    def employee_dashboard_page(user: User = Depends(require_user)):
+        return dashboard_page("Employee dashboard", user.name)
 
     @app.get("/api/v1/admin/dashboard")
     def admin_dashboard(

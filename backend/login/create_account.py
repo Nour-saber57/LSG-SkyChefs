@@ -1,22 +1,24 @@
 import argparse
 from getpass import getpass
 
-from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 
 try:
     from .main import (
-        Base,
         Settings,
         User,
         create_app,
+        initialize_database,
+        normalize_work_email,
         passwords,
     )
 except ImportError:
     from main import (
-        Base,
         Settings,
         User,
         create_app,
+        initialize_database,
+        normalize_work_email,
         passwords,
     )
 
@@ -26,10 +28,11 @@ def main():
         description="Create a SkyChef account."
     )
 
-    parser.add_argument(
+    identities = parser.add_mutually_exclusive_group(required=True)
+    identities.add_argument("--email", help="Work email")
+    identities.add_argument(
         "--identity",
-        required=True,
-        help="Employee ID or work email",
+        help="Existing CLI option for an employee ID or work email",
     )
 
     parser.add_argument(
@@ -40,12 +43,20 @@ def main():
     parser.add_argument(
         "--role",
         required=True,
-        choices=["user", "admin"],
+        choices=["employee", "admin", "user"],
     )
 
     args = parser.parse_args()
 
-    identity = args.identity.strip().casefold()
+    if args.email is not None:
+        try:
+            identity = normalize_work_email(args.email)
+        except ValueError as error:
+            parser.error(str(error))
+    else:
+        identity = args.identity.strip().casefold()
+
+    role = "user" if args.role == "employee" else args.role
     name = args.name.strip()
 
     if not identity or len(identity) > 254:
@@ -72,30 +83,23 @@ def main():
 
     factory = application.state.session_factory
 
-    Base.metadata.create_all(
-        factory.kw["bind"]
-    )
+    initialize_database(factory.kw["bind"])
 
     with factory() as db:
-        existing_user = db.scalar(
-            select(User).where(
-                User.identity == identity
-            )
-        )
-
-        if existing_user:
-            parser.error("Account already exists.")
-
         user = User(
             identity=identity,
             name=name,
-            role=args.role,
+            role=role,
             password_hash=passwords.hash(password),
             active=True,
         )
 
         db.add(user)
-        db.commit()
+        try:
+            db.commit()
+        except IntegrityError:
+            db.rollback()
+            parser.error("Account already exists.")
 
     print("Account created successfully.")
 
