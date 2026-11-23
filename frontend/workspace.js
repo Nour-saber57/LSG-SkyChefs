@@ -1,0 +1,217 @@
+const byId = (id) => document.getElementById(id);
+const pages = {
+  "/dashboard": {
+    title: "Employee dashboard",
+    description: "Access your HR services.",
+    next: ["/hr-services", "HR Services", "Browse the services available to employees."],
+  },
+  "/hr-services": {
+    title: "HR Services",
+    description: "Choose a service to contact HR.",
+    back: ["/dashboard", "Employee dashboard"],
+    next: ["/hr-services/salary", "Salary", "Send HR a question about your salary or payslip."],
+    nextSecondary: ["/hr-services/hr-letter", "HR Letter", "Write and send an HR letter request."],
+  },
+  "/hr-services/salary": {
+    title: "Salary",
+    description: "Send a private salary inquiry to HR.",
+    back: ["/hr-services", "HR Services"],
+    panel: "salary-panel",
+  },
+  "/hr-services/hr-letter": {
+    title: "HR Letter",
+    description: "Write your request and send it to HR.",
+    back: ["/hr-services", "HR Services"],
+    panel: "hr-letter-panel",
+  },
+  "/admin/dashboard": {
+    title: "Admin dashboard",
+    description: "Review inquiries submitted by employees.",
+    next: ["/admin/hr-inbox", "HR Inbox", "Open the latest messages sent to HR."],
+  },
+  "/admin/hr-inbox": {
+    title: "HR Inbox",
+    description: "Employee messages, newest first.",
+    back: ["/admin/dashboard", "Admin dashboard"],
+    panel: "inbox-panel",
+  },
+};
+
+const page = pages[location.pathname];
+const dateFormat = new Intl.DateTimeFormat("en-EG", {
+  dateStyle: "medium", timeStyle: "short", timeZone: "Africa/Cairo",
+});
+
+function feedback(id, message, kind = "info") {
+  const field = byId(id);
+  field.textContent = message;
+  field.dataset.kind = kind;
+  field.hidden = !message;
+}
+
+async function request(path, options = {}) {
+  const response = await fetch(path, { ...options, credentials: "same-origin", cache: "no-store" });
+  if (response.status === 401) {
+    location.replace("/");
+    throw new Error("Your session ended. Please sign in again.");
+  }
+  if (!response.ok) {
+    const result = await response.json().catch(() => ({}));
+    throw new Error(typeof result.detail === "string" && response.status < 500
+      ? result.detail : "Could not complete the request. Please try again.");
+  }
+  return response.status === 204 ? null : response.json();
+}
+
+async function post(path, payload) {
+  const { csrf_token } = await request("/api/v1/auth/csrf");
+  const headers = { "X-CSRF-Token": csrf_token };
+  const options = { method: "POST", headers };
+  if (payload) {
+    headers["Content-Type"] = "application/json";
+    options.body = JSON.stringify(payload);
+  }
+  return request(path, options);
+}
+
+function showPage() {
+  document.title = page.title + " | LSG Sky Chefs";
+  byId("page-title").textContent = page.title;
+  byId("page-description").textContent = page.description;
+
+  if (page.back) {
+    const link = byId("back");
+    [link.href, link.textContent] = page.back;
+    link.hidden = false;
+  }
+  if (page.next) {
+    const link = byId("next");
+    [link.href, link.textContent, byId("next-description").textContent] = page.next;
+    byId("navigation-card").hidden = false;
+  }
+  if (page.nextSecondary) {
+    const link = byId("next-secondary");
+    [link.href, link.textContent, byId("next-secondary-description").textContent] = page.nextSecondary;
+    byId("secondary-navigation-card").hidden = false;
+  }
+  if (page.panel) byId(page.panel).hidden = false;
+}
+
+const logout = byId("logout");
+logout.addEventListener("click", async () => {
+  logout.disabled = true;
+  feedback("session-feedback", "");
+  try {
+    await post("/api/v1/auth/logout");
+    location.replace("/");
+  } catch (error) {
+    feedback("session-feedback", error.message, "error");
+    logout.disabled = false;
+  }
+});
+
+function bindRequestForm(formId, messageId, feedbackId, endpoint, emptyMessage) {
+  const form = byId(formId);
+  const send = form.querySelector("button");
+
+  form.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const message = byId(messageId).value.trim();
+    if (!message) {
+      feedback(feedbackId, emptyMessage, "error");
+      byId(messageId).focus();
+      return;
+    }
+
+    send.disabled = true;
+    logout.disabled = true;
+    feedback(feedbackId, "");
+    try {
+      const result = await post(endpoint, { message });
+      form.reset();
+      feedback(feedbackId, result.confirmation, "success");
+    } catch (error) {
+      feedback(feedbackId, error.message, "error");
+    } finally {
+      send.disabled = false;
+      logout.disabled = false;
+    }
+  });
+}
+
+bindRequestForm(
+  "salary-form",
+  "message",
+  "salary-feedback",
+  "/api/v1/hr/services/salary/messages",
+  "Write a message before sending.",
+);
+bindRequestForm(
+  "hr-letter-form",
+  "hr-letter-message",
+  "hr-letter-feedback",
+  "/api/v1/hr/services/hr-letter/requests",
+  "Write your HR Letter request before sending.",
+);
+
+const refresh = byId("refresh");
+const loadMore = byId("load-more");
+const pageSize = 50;
+let beforeId;
+
+function appendMessage(item) {
+  const entry = document.createElement("li");
+  const sender = document.createElement("h3");
+  sender.textContent = item.employee_name;
+  const details = document.createElement("p");
+  details.className = "muted";
+  const service = {
+    salary: "Salary",
+    hr_letter: "HR Letter",
+  }[item.service] || item.service;
+  details.textContent = [service, dateFormat.format(new Date(item.created_at)) + " Cairo"].join(" · ");
+  const body = document.createElement("p");
+  body.className = "message-body";
+  body.textContent = item.message;
+  entry.append(sender, details, body);
+  byId("messages").append(entry);
+}
+
+async function loadInbox(append = false) {
+  const query = new URLSearchParams({ limit: pageSize });
+  if (append) query.set("before_id", beforeId);
+  refresh.disabled = true;
+  loadMore.disabled = true;
+  feedback("inbox-feedback", "Loading messages…");
+
+  try {
+    const entries = await request("/api/v1/admin/hr/messages?" + query);
+    if (!append) byId("messages").replaceChildren();
+    entries.forEach(appendMessage);
+    beforeId = entries.at(-1)?.id;
+    loadMore.hidden = entries.length < pageSize;
+    const emptyText = append ? "No more messages." : "No messages yet.";
+    feedback("inbox-feedback", entries.length ? "" : emptyText);
+  } catch (error) {
+    feedback("inbox-feedback", error.message, "error");
+  } finally {
+    refresh.disabled = false;
+    loadMore.disabled = false;
+  }
+}
+
+refresh.addEventListener("click", () => loadInbox());
+loadMore.addEventListener("click", () => loadInbox(true));
+
+async function start() {
+  showPage();
+  try {
+    const account = await request("/api/v1/me");
+    byId("account-name").textContent = account.name;
+  } catch (error) {
+    feedback("session-feedback", error.message, "error");
+  }
+  if (page.panel === "inbox-panel") await loadInbox();
+}
+
+start();

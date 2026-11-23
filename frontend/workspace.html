@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>LSG Sky Chefs</title>
+  <link rel="stylesheet" href="/assets/workspace.css">
+  <script src="/assets/workspace.js" defer></script>
+</head>
+<body>
+  <header class="topbar">
+    <div class="topbar-inner">
+      <div class="brand">LSG <span>Sky Chefs</span></div>
+      <div class="account">
+        <span id="account-name"></span>
+        <button id="logout" type="button" class="secondary">Log out</button>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <nav aria-label="Navigation">
+      <a id="back" href="/" hidden>Back</a>
+    </nav>
+
+    <p id="session-feedback" class="feedback" role="alert" hidden></p>
+    <h1 id="page-title">Loading…</h1>
+    <p id="page-description" class="muted"></p>
+
+    <section id="navigation-card" class="panel" hidden>
+      <a id="next" class="service-link" href="/"></a>
+      <p id="next-description" class="muted"></p>
+    </section>
+
+    <section id="secondary-navigation-card" class="panel" hidden>
+      <a id="next-secondary" class="service-link" href="/"></a>
+      <p id="next-secondary-description" class="muted"></p>
+    </section>
+
+    <section id="salary-panel" class="panel" hidden>
+      <form id="salary-form" method="post">
+        <label for="message">Your message</label>
+        <textarea
+          id="message"
+          name="message"
+          rows="6"
+          maxlength="3000"
+          placeholder="What would you like HR to help with?"
+          required
+        ></textarea>
+        <button type="submit">Send</button>
+        <p id="salary-feedback" class="feedback" role="status" aria-live="polite" hidden></p>
+      </form>
+    </section>
+
+    <section id="hr-letter-panel" class="panel" hidden>
+      <form id="hr-letter-form" method="post">
+        <label for="hr-letter-message">Write your HR Letter request</label>
+        <textarea
+          id="hr-letter-message"
+          name="message"
+          rows="8"
+          maxlength="3000"
+          placeholder="Describe the HR letter you need and include any relevant details."
+          required
+        ></textarea>
+        <button type="submit">Send request</button>
+        <p id="hr-letter-feedback" class="feedback" role="status" aria-live="polite" hidden></p>
+      </form>
+    </section>
+
+    <section id="inbox-panel" class="panel" aria-label="HR messages" hidden>
+      <div class="inbox-heading">
+        <h2>Messages</h2>
+        <button id="refresh" class="secondary" type="button">Refresh</button>
+      </div>
+
+      <p id="inbox-feedback" class="feedback" role="status" aria-live="polite" hidden></p>
+      <ol id="messages"></ol>
+      <button id="load-more" class="secondary" type="button" hidden>Load more</button>
+    </section>
+  </main>
+</body>
+</html>

@@ -1,0 +1,200 @@
+:root {
+  color-scheme: light;
+  font-family: Inter, "Segoe UI", Arial, sans-serif;
+  color: #172536;
+  background: #f3f6fb;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  min-width: 320px;
+  min-height: 100vh;
+  margin: 0;
+}
+
+button,
+textarea {
+  font: inherit;
+}
+
+a {
+  color: #0a438c;
+}
+
+a:focus-visible,
+button:focus-visible,
+textarea:focus-visible {
+  outline: 3px solid #f5a623;
+  outline-offset: 3px;
+}
+
+.topbar {
+  color: #fff;
+  background: #0a2559;
+}
+
+.topbar-inner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  max-width: 70rem;
+  min-height: 4.5rem;
+  margin: 0 auto;
+  padding: 0 1.25rem;
+}
+
+.brand {
+  font-size: 1.25rem;
+  font-weight: 800;
+}
+
+.brand span {
+  color: #f5a623;
+}
+
+.account {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+main {
+  width: min(100% - 2rem, 56rem);
+  margin: 2rem auto;
+}
+
+nav {
+  min-height: 1.5rem;
+  margin-bottom: 1.25rem;
+}
+
+h1 {
+  margin: 0 0 0.4rem;
+  color: #0a2559;
+}
+
+h2 {
+  margin: 0;
+  color: #0a2559;
+}
+
+.muted {
+  color: #526179;
+}
+
+.panel {
+  margin: 1.5rem 0;
+  padding: clamp(1.25rem, 4vw, 2rem);
+  border: 1px solid #dce3ed;
+  border-radius: 1rem;
+  background: #fff;
+  box-shadow: 0 0.5rem 1.5rem rgb(10 37 89 / 7%);
+}
+
+.service-link {
+  color: #0a2559;
+  font-size: 1.25rem;
+  font-weight: 700;
+}
+
+textarea {
+  display: block;
+  width: 100%;
+  min-height: 9rem;
+  margin: 0.5rem 0 1rem;
+  padding: 0.8rem;
+  border: 1px solid #aeb9ca;
+  border-radius: 0.5rem;
+  resize: vertical;
+}
+
+button {
+  padding: 0.65rem 1rem;
+  border: 0;
+  border-radius: 0.5rem;
+  color: #fff;
+  background: #0a2559;
+  cursor: pointer;
+  font-weight: 700;
+}
+
+button:hover {
+  background: #123b7e;
+}
+
+button:disabled {
+  cursor: wait;
+  opacity: 0.65;
+}
+
+button.secondary {
+  border: 1px solid #c8d1de;
+  color: #0a2559;
+  background: #fff;
+}
+
+.feedback {
+  padding: 0.75rem 1rem;
+  border-radius: 0.5rem;
+  background: #eaf0f8;
+}
+
+.feedback[data-kind="error"] {
+  color: #8c1d18;
+  background: #fcebea;
+}
+
+.feedback[data-kind="success"] {
+  color: #155b35;
+  background: #e7f5ec;
+}
+
+.inbox-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+#messages {
+  display: grid;
+  gap: 1rem;
+  margin: 1rem 0;
+  padding: 0;
+  list-style: none;
+}
+
+#messages li {
+  padding: 1rem;
+  border: 1px solid #dce3ed;
+  border-radius: 0.75rem;
+  background: #fff;
+}
+
+#messages h3,
+#messages p {
+  margin: 0.35rem 0;
+}
+
+.message-body {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 520px) {
+  .topbar-inner {
+    align-items: flex-start;
+    flex-direction: column;
+    justify-content: center;
+    padding: 0.8rem 1rem;
+  }
+
+  .account {
+    width: 100%;
+    justify-content: space-between;
+  }
+}
