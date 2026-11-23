@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>LSG Sky Chefs – Employee Login</title>
+<title>Login</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -148,17 +148,17 @@
     <div class="plane-row">
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 16v-2l-8-5V3.5a1.5 1.5 0 0 0-3 0V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5l8 2.5z"/></svg>
     </div>
-    <h1>Employee Login</h1>
+    <h1>Login</h1>
     <p class="sub">Welcome to LSG Sky Chefs</p>
 
     <form id="loginForm" novalidate>
       <div class="field">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 12a5 5 0 1 0 0-10 5 5 0 0 0 0 10zm0 2c-4 0-8 2-8 5v3h16v-3c0-3-4-5-8-5z"/></svg>
-        <input type="text" id="fullName" name="fullName" placeholder="Full Name" autocomplete="name" required>
+        <input type="text" id="employeeId" name="identity" placeholder="Employee ID or work email" autocomplete="username" maxlength="254" required>
       </div>
       <div class="field">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 4h18a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1zm1 4v2h16V8H4zm1.5 4.5v2h5v-2h-5zm0 3v1.5h3V15.5h-3z"/></svg>
-        <input type="text" id="employeeId" name="employeeId" placeholder="Employee ID" inputmode="numeric" autocomplete="off" required>
+        <input type="password" id="password" name="password" placeholder="Password" autocomplete="current-password" maxlength="1024" required>
       </div>
       <button class="btn" type="submit">
         Login
@@ -180,30 +180,99 @@
   var form = document.getElementById("loginForm");
   var welcome = document.getElementById("welcome");
   var error = document.getElementById("error");
+  var apiBase = window.location.port === "5173"
+    ? "http://localhost:8000"
+    : window.location.origin;
+  var csrfToken = "";
 
-  form.addEventListener("submit", function (e) {
+  function showWelcome(user) {
+    document.getElementById("welcomeName").textContent = user.name;
+    document.getElementById("welcomeId").textContent = user.identity;
+    form.hidden = true;
+    welcome.hidden = false;
+  }
+
+  function redirectForRole(user) {
+    window.location.assign(user.role === "admin" ? "/admin/dashboard" : "/dashboard");
+  }
+
+  async function restoreSession() {
+    try {
+      var response = await fetch(apiBase + "/api/v1/me", {
+        credentials: "include"
+      });
+      if (!response.ok) return;
+      showWelcome(await response.json());
+
+      var csrfResponse = await fetch(apiBase + "/api/v1/auth/csrf", {
+        credentials: "include"
+      });
+      if (csrfResponse.ok) {
+        csrfToken = (await csrfResponse.json()).csrf_token;
+      }
+    } catch (_) {
+      // The login page remains usable if the API is unavailable.
+    }
+  }
+
+  form.addEventListener("submit", async function (e) {
     e.preventDefault();
-    var name = document.getElementById("fullName").value.trim();
-    var id = document.getElementById("employeeId").value.trim();
+    var identity = document.getElementById("employeeId").value.trim();
+    var password = document.getElementById("password").value;
+    var button = form.querySelector("button");
 
-    if (!name || !id) {
-      error.textContent = "Enter your full name and employee ID.";
+    if (!identity || !password) {
+      error.textContent = "Enter your employee ID or work email and password.";
       return;
     }
     error.textContent = "";
+    button.disabled = true;
 
-    // لما تربطي الـ backend، اعملي هنا fetch وبعد ما يرجع نجاح نفذي الكود اللي تحت
-    document.getElementById("welcomeName").textContent = name;
-    document.getElementById("welcomeId").textContent = id;
-    form.hidden = true;
-    welcome.hidden = false;
+    try {
+      var response = await fetch(apiBase + "/api/v1/auth/login", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ identity: identity, password: password })
+      });
+
+      if (!response.ok) {
+        if (response.status === 429) {
+          error.textContent = "Too many sign-in attempts. Try again later.";
+        } else {
+          error.textContent = "Unable to sign in. Check your credentials.";
+        }
+        return;
+      }
+
+      var result = await response.json();
+      csrfToken = result.csrf_token;
+      redirectForRole(result.user);
+    } catch (_) {
+      error.textContent = "Unable to reach the server. Try again.";
+    } finally {
+      button.disabled = false;
+    }
   });
 
-  document.getElementById("logoutBtn").addEventListener("click", function () {
+  document.getElementById("logoutBtn").addEventListener("click", async function () {
+    try {
+      await fetch(apiBase + "/api/v1/auth/logout", {
+        method: "POST",
+        credentials: "include",
+        headers: { "X-CSRF-Token": csrfToken }
+      });
+    } catch (_) {
+      // Clear the local view even if the logout request cannot reach the server.
+    }
+
+    csrfToken = "";
     form.reset();
     welcome.hidden = true;
     form.hidden = false;
   });
+
+  restoreSession();
 </script>
 </body>
 </html>

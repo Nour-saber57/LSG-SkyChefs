@@ -9,7 +9,7 @@ from pathlib import Path
 from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 
 from pydantic import AliasChoices, BaseModel, ConfigDict, Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -52,7 +52,10 @@ class Settings(BaseSettings):
     cookie_secure: bool = True
 
     frontend_origins: list[str] = [
-        "http://localhost:5173"
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        "http://localhost:8000",
+        "http://127.0.0.1:8000",
     ]
 
     allowed_hosts: list[str] = [
@@ -865,7 +868,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.get("/", response_class=HTMLResponse, include_in_schema=False)
     def sign_in_page():
-        return LOGIN_PAGE
+        frontend = Path(__file__).resolve().parents[2] / "frontend" / "index.html"
+        return FileResponse(frontend)
 
     @app.get("/admin/dashboard", response_class=HTMLResponse, include_in_schema=False)
     def admin_dashboard_page(user: User = Depends(require_admin)):
