@@ -3,8 +3,8 @@ from datetime import datetime, timezone
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query
-from pydantic import BaseModel
-from sqlalchemy import ForeignKey, Integer, select
+from pydantic import BaseModel, ConfigDict, StringConstraints
+from sqlalchemy import ForeignKey, Integer, String, Text, select
 from sqlalchemy.orm import Mapped, Session, mapped_column
 
 if __package__ == "insurance":
@@ -18,7 +18,22 @@ class InsuranceRequest(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     employee_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    employee_code: Mapped[str] = mapped_column(String(50))
+    message: Mapped[str] = mapped_column(Text)
     created_at: Mapped[int] = mapped_column(Integer)
+
+
+class InsuranceRequestCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    employee_code: Annotated[
+        str,
+        StringConstraints(strip_whitespace=True, min_length=1, max_length=50),
+    ]
+    message: Annotated[
+        str,
+        StringConstraints(strip_whitespace=True, min_length=1, max_length=3000),
+    ]
 
 
 class InsuranceRequestSent(BaseModel):
@@ -31,6 +46,8 @@ class AdminInsuranceRequest(BaseModel):
     id: int
     employee_id: int
     employee_name: str
+    employee_code: str
+    message: str
     created_at: datetime
 
 
@@ -44,11 +61,14 @@ def create_insurance_router(get_db, require_user, require_admin, require_csrf) -
         dependencies=[Depends(require_csrf)],
     )
     def create_insurance_request(
+        payload: InsuranceRequestCreate,
         employee: User = Depends(require_user),
         db: Session = Depends(get_db),
     ):
         entry = InsuranceRequest(
             employee_id=employee.id,
+            employee_code=payload.employee_code,
+            message=payload.message,
             created_at=int(time.time()),
         )
         db.add(entry)
@@ -82,6 +102,8 @@ def create_insurance_router(get_db, require_user, require_admin, require_csrf) -
                 id=entry.id,
                 employee_id=entry.employee_id,
                 employee_name=employee_name,
+                employee_code=entry.employee_code,
+                message=entry.message,
                 created_at=datetime.fromtimestamp(entry.created_at, tz=timezone.utc),
             )
             for entry, employee_name in rows

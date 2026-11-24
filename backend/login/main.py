@@ -39,12 +39,14 @@ if __package__ == "login":
     from hr_services.HrLetter import create_hr_letter_router
     from hr_services.holidays import create_holidays_router
     from hr_services.salary import create_salary_router
+    from insurance.changing import create_insurance_change_router
     from insurance.insuranceRequest import create_insurance_router
 else:
     from ..database import Base, User
     from ..hr_services.HrLetter import create_hr_letter_router
     from ..hr_services.holidays import create_holidays_router
     from ..hr_services.salary import create_salary_router
+    from ..insurance.changing import create_insurance_change_router
     from ..insurance.insuranceRequest import create_insurance_router
 
 # --------------------------------------------------
@@ -124,6 +126,20 @@ class LoginLimit(Base):
 def initialize_database(engine):
     with engine.begin() as connection:
         Base.metadata.create_all(connection)
+        insurance_columns = {
+            column["name"]
+            for column in inspect(connection).get_columns("insurance_requests")
+        }
+        if "employee_code" not in insurance_columns:
+            connection.exec_driver_sql(
+                "ALTER TABLE insurance_requests "
+                "ADD COLUMN employee_code VARCHAR(50) NOT NULL DEFAULT ''"
+            )
+        if "message" not in insurance_columns:
+            connection.exec_driver_sql(
+                "ALTER TABLE insurance_requests "
+                "ADD COLUMN message TEXT NOT NULL DEFAULT ''"
+            )
         if connection.dialect.name == "sqlite":
             create_view = "CREATE VIEW IF NOT EXISTS"
             existing_views = ()
@@ -490,6 +506,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     )
     app.include_router(
         create_insurance_router(
+            get_db=get_db,
+            require_user=require_user,
+            require_admin=require_admin,
+            require_csrf=require_csrf,
+        )
+    )
+    app.include_router(
+        create_insurance_change_router(
             get_db=get_db,
             require_user=require_user,
             require_admin=require_admin,
