@@ -42,6 +42,11 @@
       <p id="next-tertiary-description" class="muted"></p>
     </section>
 
+    <section id="quaternary-navigation-card" class="panel" hidden>
+      <a id="next-quaternary" class="service-link" href="/"></a>
+      <p id="next-quaternary-description" class="muted"></p>
+    </section>
+
     <section id="salary-panel" class="panel" hidden>
       <form id="salary-form" method="post">
         <label for="message">Your message</label>
@@ -94,6 +99,41 @@
       </form>
     </section>
 
+    <section id="insurance-panel" class="panel" hidden>
+      <h2>Insurance request</h2>
+      <p>Enter your employee code and message for HR.</p>
+      <form id="insurance-form" method="post">
+        <label for="insurance-employee-code">Employee code</label>
+        <input
+          id="insurance-employee-code"
+          name="employee_code"
+          type="text"
+          inputmode="numeric"
+          maxlength="50"
+          required
+        >
+        <label for="insurance-message">Your message</label>
+        <textarea
+          id="insurance-message"
+          name="message"
+          rows="6"
+          maxlength="3000"
+          placeholder="Describe your insurance request."
+          required
+        ></textarea>
+        <button type="submit">Send insurance request</button>
+        <p id="insurance-feedback" class="feedback" role="status" aria-live="polite" hidden></p>
+      </form>
+
+      <hr>
+      <h2>Insurance change</h2>
+      <p>Submit a request to change your insurance details.</p>
+      <form id="insurance-change-form" method="post">
+        <button type="submit">Request an insurance change</button>
+        <p id="insurance-change-feedback" class="feedback" role="status" aria-live="polite" hidden></p>
+      </form>
+    </section>
+
     <section id="inbox-panel" class="panel" aria-label="HR messages" hidden>
       <div class="inbox-heading">
         <h2>Messages</h2>
@@ -113,6 +153,24 @@
       <p id="holiday-requests-feedback" class="feedback" role="status" aria-live="polite" hidden></p>
       <ol id="holiday-requests"></ol>
       <button id="load-more-holidays" class="secondary" type="button" hidden>Load more</button>
+    </section>
+
+    <section id="insurance-requests-panel" class="panel" aria-label="Employee insurance requests" hidden>
+      <div class="inbox-heading">
+        <h2>Insurance requests</h2>
+        <button id="refresh-insurance" class="secondary" type="button">Refresh</button>
+      </div>
+      <p id="insurance-requests-feedback" class="feedback" role="status" aria-live="polite" hidden></p>
+      <ol id="insurance-requests"></ol>
+      <button id="load-more-insurance" class="secondary" type="button" hidden>Load more</button>
+
+      <div class="inbox-heading">
+        <h2>Insurance changes</h2>
+        <button id="refresh-insurance-changes" class="secondary" type="button">Refresh</button>
+      </div>
+      <p id="insurance-changes-feedback" class="feedback" role="status" aria-live="polite" hidden></p>
+      <ol id="insurance-changes"></ol>
+      <button id="load-more-insurance-changes" class="secondary" type="button" hidden>Load more</button>
     </section>
   </main>
 </body>

@@ -12,6 +12,7 @@ const pages = {
     next: ["/hr-services/salary", "Salary", "Send HR a question about your salary or payslip."],
     nextSecondary: ["/hr-services/hr-letter", "HR Letter", "Write and send an HR letter request."],
     nextTertiary: ["/hr-services/holidays", "Holiday request", "Choose your holiday dates and send HR your request."],
+    nextQuaternary: ["/hr-services/insurance", "Insurance request", "Submit a request for HR to review your insurance needs."],
   },
   "/hr-services/salary": {
     title: "Salary",
@@ -31,11 +32,18 @@ const pages = {
     back: ["/hr-services", "HR Services"],
     panel: "holiday-panel",
   },
+  "/hr-services/insurance": {
+    title: "Insurance request",
+    description: "Submit an insurance request to HR.",
+    back: ["/hr-services", "HR Services"],
+    panel: "insurance-panel",
+  },
   "/admin/dashboard": {
     title: "Admin dashboard",
     description: "Review requests and inquiries submitted by employees.",
     next: ["/admin/hr-inbox", "HR Inbox", "Open the latest messages sent to HR."],
     nextSecondary: ["/admin/holiday-requests", "Holiday requests", "Review holiday requests submitted by employees."],
+    nextTertiary: ["/admin/insurance-requests", "Insurance requests", "Preview insurance requests submitted by employees."],
   },
   "/admin/hr-inbox": {
     title: "HR Inbox",
@@ -48,6 +56,12 @@ const pages = {
     description: "Employee holiday requests, newest first.",
     back: ["/admin/dashboard", "Admin dashboard"],
     panel: "holiday-requests-panel",
+  },
+  "/admin/insurance-requests": {
+    title: "Insurance requests",
+    description: "Employee insurance requests, newest first.",
+    back: ["/admin/dashboard", "Admin dashboard"],
+    panel: "insurance-requests-panel",
   },
 };
 
@@ -112,6 +126,11 @@ function showPage() {
     const link = byId("next-tertiary");
     [link.href, link.textContent, byId("next-tertiary-description").textContent] = page.nextTertiary;
     byId("tertiary-navigation-card").hidden = false;
+  }
+  if (page.nextQuaternary) {
+    const link = byId("next-quaternary");
+    [link.href, link.textContent, byId("next-quaternary-description").textContent] = page.nextQuaternary;
+    byId("quaternary-navigation-card").hidden = false;
   }
   if (page.panel) byId(page.panel).hidden = false;
 }
@@ -308,6 +327,147 @@ async function loadHolidayRequests(append = false) {
 refreshHolidays.addEventListener("click", () => loadHolidayRequests());
 loadMoreHolidays.addEventListener("click", () => loadHolidayRequests(true));
 
+const insuranceForm = byId("insurance-form");
+insuranceForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const employeeCode = byId("insurance-employee-code").value.trim();
+  const message = byId("insurance-message").value.trim();
+  if (!employeeCode) {
+    feedback("insurance-feedback", "Enter your employee code.", "error");
+    byId("insurance-employee-code").focus();
+    return;
+  }
+  if (!message) {
+    feedback("insurance-feedback", "Write a message for HR.", "error");
+    byId("insurance-message").focus();
+    return;
+  }
+
+  const submit = insuranceForm.querySelector("button");
+  submit.disabled = true;
+  logout.disabled = true;
+  feedback("insurance-feedback", "");
+  try {
+    const result = await post("/api/v1/hr/services/insurance/requests", {
+      employee_code: employeeCode,
+      message,
+    });
+    insuranceForm.reset();
+    feedback("insurance-feedback", result.confirmation, "success");
+  } catch (error) {
+    feedback("insurance-feedback", error.message, "error");
+  } finally {
+    submit.disabled = false;
+    logout.disabled = false;
+  }
+});
+
+const insuranceChangeForm = byId("insurance-change-form");
+insuranceChangeForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const submit = insuranceChangeForm.querySelector("button");
+  submit.disabled = true;
+  logout.disabled = true;
+  feedback("insurance-change-feedback", "");
+  try {
+    const result = await post("/api/v1/hr/services/insurance/changes");
+    feedback("insurance-change-feedback", result.confirmation, "success");
+  } catch (error) {
+    feedback("insurance-change-feedback", error.message, "error");
+  } finally {
+    submit.disabled = false;
+    logout.disabled = false;
+  }
+});
+
+const refreshInsurance = byId("refresh-insurance");
+const loadMoreInsurance = byId("load-more-insurance");
+let beforeInsuranceId;
+
+function appendInsuranceRequest(item) {
+  const entry = document.createElement("li");
+  const sender = document.createElement("h3");
+  sender.textContent = item.employee_name;
+  const submitted = document.createElement("p");
+  submitted.className = "muted";
+  submitted.textContent = [
+    "Employee code: " + (item.employee_code || "Not recorded"),
+    "Submitted " + dateFormat.format(new Date(item.created_at)) + " Cairo",
+  ].join(" · ");
+  const body = document.createElement("p");
+  body.className = "message-body";
+  body.textContent = item.message || "No message was recorded.";
+  entry.append(sender, submitted, body);
+  byId("insurance-requests").append(entry);
+}
+
+async function loadInsuranceRequests(append = false) {
+  const query = new URLSearchParams({ limit: pageSize });
+  if (append) query.set("before_id", beforeInsuranceId);
+  refreshInsurance.disabled = true;
+  loadMoreInsurance.disabled = true;
+  feedback("insurance-requests-feedback", "Loading insurance requests…");
+
+  try {
+    const entries = await request("/api/v1/admin/hr/insurance-requests?" + query);
+    if (!append) byId("insurance-requests").replaceChildren();
+    entries.forEach(appendInsuranceRequest);
+    beforeInsuranceId = entries.at(-1)?.id;
+    loadMoreInsurance.hidden = entries.length < pageSize;
+    const emptyText = append ? "No more insurance requests." : "No insurance requests yet.";
+    feedback("insurance-requests-feedback", entries.length ? "" : emptyText);
+  } catch (error) {
+    feedback("insurance-requests-feedback", error.message, "error");
+  } finally {
+    refreshInsurance.disabled = false;
+    loadMoreInsurance.disabled = false;
+  }
+}
+
+refreshInsurance.addEventListener("click", () => loadInsuranceRequests());
+loadMoreInsurance.addEventListener("click", () => loadInsuranceRequests(true));
+
+const refreshInsuranceChanges = byId("refresh-insurance-changes");
+const loadMoreInsuranceChanges = byId("load-more-insurance-changes");
+let beforeInsuranceChangeId;
+
+function appendInsuranceChange(item) {
+  const entry = document.createElement("li");
+  const sender = document.createElement("h3");
+  sender.textContent = item.employee_name;
+  const submitted = document.createElement("p");
+  submitted.className = "muted";
+  submitted.textContent = "Insurance change · Submitted " + dateFormat.format(new Date(item.created_at)) + " Cairo";
+  entry.append(sender, submitted);
+  byId("insurance-changes").append(entry);
+}
+
+async function loadInsuranceChanges(append = false) {
+  const query = new URLSearchParams({ limit: pageSize });
+  if (append) query.set("before_id", beforeInsuranceChangeId);
+  refreshInsuranceChanges.disabled = true;
+  loadMoreInsuranceChanges.disabled = true;
+  feedback("insurance-changes-feedback", "Loading insurance changes…");
+
+  try {
+    const entries = await request("/api/v1/admin/hr/insurance-changes?" + query);
+    if (!append) byId("insurance-changes").replaceChildren();
+    entries.forEach(appendInsuranceChange);
+    beforeInsuranceChangeId = entries.at(-1)?.id;
+    loadMoreInsuranceChanges.hidden = entries.length < pageSize;
+    const emptyText = append ? "No more insurance changes." : "No insurance changes yet.";
+    feedback("insurance-changes-feedback", entries.length ? "" : emptyText);
+  } catch (error) {
+    feedback("insurance-changes-feedback", error.message, "error");
+  } finally {
+    refreshInsuranceChanges.disabled = false;
+    loadMoreInsuranceChanges.disabled = false;
+  }
+}
+
+refreshInsuranceChanges.addEventListener("click", () => loadInsuranceChanges());
+loadMoreInsuranceChanges.addEventListener("click", () => loadInsuranceChanges(true));
+
 async function start() {
   showPage();
   try {
@@ -318,6 +478,9 @@ async function start() {
   }
   if (page.panel === "inbox-panel") await loadInbox();
   if (page.panel === "holiday-requests-panel") await loadHolidayRequests();
+  if (page.panel === "insurance-requests-panel") {
+    await Promise.all([loadInsuranceRequests(), loadInsuranceChanges()]);
+  }
 }
 
 start();
