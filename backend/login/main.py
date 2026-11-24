@@ -39,11 +39,13 @@ if __package__ == "login":
     from hr_services.HrLetter import create_hr_letter_router
     from hr_services.holidays import create_holidays_router
     from hr_services.salary import create_salary_router
+    from insurance.insuranceRequest import create_insurance_router
 else:
     from ..database import Base, User
     from ..hr_services.HrLetter import create_hr_letter_router
     from ..hr_services.holidays import create_holidays_router
     from ..hr_services.salary import create_salary_router
+    from ..insurance.insuranceRequest import create_insurance_router
 
 # --------------------------------------------------
 # Configuration
@@ -486,6 +488,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             require_csrf=require_csrf,
         )
     )
+    app.include_router(
+        create_insurance_router(
+            get_db=get_db,
+            require_user=require_user,
+            require_admin=require_admin,
+            require_csrf=require_csrf,
+        )
+    )
 
     # --------------------------------------------------
     # Login throttling
@@ -890,6 +900,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     def holidays_page(user: User = Depends(require_user)):
         return workspace_page()
 
+    @app.get("/hr-services/insurance", response_class=HTMLResponse, include_in_schema=False)
+    def insurance_page(user: User = Depends(require_user)):
+        return workspace_page()
+
     @app.get("/admin/dashboard", response_class=HTMLResponse, include_in_schema=False)
     def admin_dashboard_page(user: User = Depends(require_admin)):
         return workspace_page()
@@ -900,6 +914,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.get("/admin/holiday-requests", response_class=HTMLResponse, include_in_schema=False)
     def admin_holiday_requests_page(user: User = Depends(require_admin)):
+        return workspace_page()
+
+    @app.get("/admin/insurance-requests", response_class=HTMLResponse, include_in_schema=False)
+    def admin_insurance_requests_page(user: User = Depends(require_admin)):
         return workspace_page()
 
     @app.get("/api/v1/admin/dashboard")
