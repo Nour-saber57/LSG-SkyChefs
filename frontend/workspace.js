@@ -4,6 +4,7 @@ const pages = {
     title: "Employee dashboard",
     description: "Access your HR services.",
     next: ["/hr-services", "HR Services", "Browse the services available to employees."],
+    nextSecondary: ["/courses", "Courses", "View available employee courses and respond."],
   },
   "/hr-services": {
     title: "HR Services",
@@ -38,12 +39,19 @@ const pages = {
     back: ["/hr-services", "HR Services"],
     panel: "insurance-panel",
   },
+  "/courses": {
+    title: "Courses",
+    description: "Review available courses and choose whether to enroll or excuse yourself.",
+    back: ["/dashboard", "Employee dashboard"],
+    panel: "courses-panel",
+  },
   "/admin/dashboard": {
     title: "Admin dashboard",
     description: "Review requests and inquiries submitted by employees.",
     next: ["/admin/hr-inbox", "HR Inbox", "Open the latest messages sent to HR."],
     nextSecondary: ["/admin/holiday-requests", "Holiday requests", "Review holiday requests submitted by employees."],
     nextTertiary: ["/admin/insurance-requests", "Insurance requests", "Preview insurance requests submitted by employees."],
+    nextQuaternary: ["/admin/courses", "Courses", "Add courses and review employee responses."],
   },
   "/admin/hr-inbox": {
     title: "HR Inbox",
@@ -62,6 +70,12 @@ const pages = {
     description: "Employee insurance requests, newest first.",
     back: ["/admin/dashboard", "Admin dashboard"],
     panel: "insurance-requests-panel",
+  },
+  "/admin/courses": {
+    title: "Manage courses",
+    description: "Add courses and review which employees enrolled or excused themselves.",
+    back: ["/admin/dashboard", "Admin dashboard"],
+    panel: "admin-courses-panel",
   },
 };
 
@@ -100,6 +114,18 @@ async function post(path, payload) {
     options.body = JSON.stringify(payload);
   }
   return request(path, options);
+}
+
+async function put(path, payload) {
+  const { csrf_token } = await request("/api/v1/auth/csrf");
+  return request(path, {
+    method: "PUT",
+    headers: {
+      "Content-Type": "application/json",
+      "X-CSRF-Token": csrf_token,
+    },
+    body: JSON.stringify(payload),
+  });
 }
 
 function showPage() {
@@ -468,6 +494,191 @@ async function loadInsuranceChanges(append = false) {
 refreshInsuranceChanges.addEventListener("click", () => loadInsuranceChanges());
 loadMoreInsuranceChanges.addEventListener("click", () => loadInsuranceChanges(true));
 
+function addCourseDetails(container, course) {
+  if (course.image_url) {
+    const image = document.createElement("img");
+    image.src = course.image_url;
+    image.alt = "Course image for " + course.title;
+    image.className = "course-image";
+    container.append(image);
+  }
+  const title = document.createElement("h3");
+  title.textContent = course.title;
+  const info = document.createElement("p");
+  info.className = "muted";
+  info.textContent = [course.start_date, course.duration, course.location].join(" · ");
+  const description = document.createElement("p");
+  description.className = "message-body";
+  description.textContent = course.description;
+  container.append(title, info, description);
+}
+
+function appendEmployeeCourse(course) {
+  const card = document.createElement("article");
+  card.className = "course-card";
+  addCourseDetails(card, course);
+
+  const current = document.createElement("p");
+  current.className = "muted";
+  current.textContent = course.decision
+    ? `Your current response: ${course.decision}${course.reason ? " — " + course.reason : ""}`
+    : "You have not responded to this course.";
+  card.append(current);
+
+  const form = document.createElement("form");
+  const decision = document.createElement("select");
+  decision.id = `course-decision-${course.id}`;
+  decision.setAttribute("aria-label", "Course response");
+  for (const [value, label] of [["enrolled", "Enroll"], ["excused", "Excuse myself"]]) {
+    const option = document.createElement("option");
+    option.value = value;
+    option.textContent = label;
+    decision.append(option);
+  }
+  if (course.decision) decision.value = course.decision;
+  const reasonLabel = document.createElement("label");
+  reasonLabel.htmlFor = `course-reason-${course.id}`;
+  reasonLabel.textContent = "Reason for excusing yourself";
+  const reason = document.createElement("textarea");
+  reason.id = `course-reason-${course.id}`;
+  reason.rows = 3;
+  reason.maxLength = 2000;
+  reason.value = course.decision === "excused" ? course.reason || "" : "";
+  reason.hidden = decision.value !== "excused";
+  reason.required = decision.value === "excused";
+  decision.addEventListener("change", () => {
+    reason.hidden = decision.value !== "excused";
+    reason.required = decision.value === "excused";
+  });
+  const submit = document.createElement("button");
+  submit.type = "submit";
+  submit.textContent = "Save response";
+  const result = document.createElement("p");
+  result.className = "feedback";
+  result.setAttribute("role", "status");
+  result.hidden = true;
+  form.append(decision, reasonLabel, reason, submit, result);
+  form.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const reasonText = reason.value.trim();
+    if (decision.value === "excused" && !reasonText) {
+      result.textContent = "Enter a reason for excusing yourself.";
+      result.dataset.kind = "error";
+      result.hidden = false;
+      reason.focus();
+      return;
+    }
+    submit.disabled = true;
+    try {
+      await put(`/api/v1/courses/${course.id}/decision`, {
+        decision: decision.value,
+        reason: decision.value === "excused" ? reasonText : null,
+      });
+      await loadCourses();
+    } catch (error) {
+      result.textContent = error.message;
+      result.dataset.kind = "error";
+      result.hidden = false;
+    } finally {
+      submit.disabled = false;
+    }
+  });
+  card.append(form);
+  byId("courses-list").append(card);
+}
+
+async function loadCourses() {
+  const refreshCourses = byId("refresh-courses");
+  if (refreshCourses) refreshCourses.disabled = true;
+  feedback("courses-feedback", "Loading courses…");
+  try {
+    const courses = await request("/api/v1/courses");
+    byId("courses-list").replaceChildren();
+    courses.forEach(appendEmployeeCourse);
+    feedback("courses-feedback", courses.length ? "" : "No courses are available yet.");
+  } catch (error) {
+    feedback("courses-feedback", error.message, "error");
+  } finally {
+    if (refreshCourses) refreshCourses.disabled = false;
+  }
+}
+
+function appendAdminCourse(course) {
+  const card = document.createElement("article");
+  card.className = "course-card";
+  addCourseDetails(card, course);
+  const responsesTitle = document.createElement("h4");
+  responsesTitle.textContent = "Employee responses";
+  card.append(responsesTitle);
+  if (!course.decisions.length) {
+    const empty = document.createElement("p");
+    empty.className = "muted";
+    empty.textContent = "No employees have responded yet.";
+    card.append(empty);
+  } else {
+    const list = document.createElement("ul");
+    for (const response of course.decisions) {
+      const item = document.createElement("li");
+      item.textContent = `${response.employee_name} — ${response.decision}`
+        + (response.reason ? `: ${response.reason}` : "");
+      list.append(item);
+    }
+    card.append(list);
+  }
+  byId("admin-courses-list").append(card);
+}
+
+async function loadAdminCourses() {
+  byId("refresh-admin-courses").disabled = true;
+  feedback("admin-courses-feedback", "Loading course responses…");
+  try {
+    const courses = await request("/api/v1/admin/courses");
+    byId("admin-courses-list").replaceChildren();
+    courses.forEach(appendAdminCourse);
+    feedback("admin-courses-feedback", courses.length ? "" : "No courses have been added.");
+  } catch (error) {
+    feedback("admin-courses-feedback", error.message, "error");
+  } finally {
+    byId("refresh-admin-courses").disabled = false;
+  }
+}
+
+byId("refresh-courses").addEventListener("click", loadCourses);
+byId("refresh-admin-courses").addEventListener("click", loadAdminCourses);
+byId("course-form").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const form = byId("course-form");
+  const submit = form.querySelector("button");
+  submit.disabled = true;
+  feedback("course-form-feedback", "");
+  try {
+    const { csrf_token } = await request("/api/v1/auth/csrf");
+    const response = await fetch("/api/v1/admin/courses", {
+      method: "POST",
+      credentials: "same-origin",
+      cache: "no-store",
+      headers: { "X-CSRF-Token": csrf_token },
+      body: new FormData(form),
+    });
+    if (response.status === 401) {
+      location.replace("/");
+      throw new Error("Your session ended. Please sign in again.");
+    }
+    if (!response.ok) {
+      const result = await response.json().catch(() => ({}));
+      throw new Error(typeof result.detail === "string" && response.status < 500
+        ? result.detail : "Could not create the course. Please try again.");
+    }
+    form.reset();
+    feedback("course-form-feedback", "Course created.", "success");
+    await loadAdminCourses();
+  } catch (error) {
+    feedback("course-form-feedback", error.message, "error");
+  } finally {
+    submit.disabled = false;
+  }
+});
+
 async function start() {
   showPage();
   try {
@@ -481,6 +692,8 @@ async function start() {
   if (page.panel === "insurance-requests-panel") {
     await Promise.all([loadInsuranceRequests(), loadInsuranceChanges()]);
   }
+  if (page.panel === "courses-panel") await loadCourses();
+  if (page.panel === "admin-courses-panel") await loadAdminCourses();
 }
 
 start();

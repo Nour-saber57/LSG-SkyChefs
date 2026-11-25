@@ -134,6 +134,45 @@
       </form>
     </section>
 
+    <section id="courses-panel" class="panel" hidden>
+      <div class="inbox-heading">
+        <h2>Available courses</h2>
+        <button id="refresh-courses" class="secondary" type="button">Refresh</button>
+      </div>
+      <p id="courses-feedback" class="feedback" role="status" aria-live="polite" hidden></p>
+      <div id="courses-list" class="course-list"></div>
+    </section>
+
+    <section id="admin-courses-panel" hidden>
+      <section class="panel">
+        <h2>Add a course</h2>
+        <form id="course-form" enctype="multipart/form-data">
+          <label for="course-title">Course title</label>
+          <input id="course-title" name="title" type="text" maxlength="150" required>
+          <label for="course-description">Details</label>
+          <textarea id="course-description" name="description" rows="5" maxlength="5000" required></textarea>
+          <label for="course-start-date">Start date</label>
+          <input id="course-start-date" name="start_date" type="date" required>
+          <label for="course-duration">Duration</label>
+          <input id="course-duration" name="duration" type="text" maxlength="100" placeholder="e.g. 2 days" required>
+          <label for="course-location">Location</label>
+          <input id="course-location" name="location" type="text" maxlength="150" required>
+          <label for="course-image">Course image (JPEG, PNG, or WebP; up to 5 MB)</label>
+          <input id="course-image" name="image" type="file" accept="image/jpeg,image/png,image/webp">
+          <button type="submit">Add course</button>
+          <p id="course-form-feedback" class="feedback" role="status" aria-live="polite" hidden></p>
+        </form>
+      </section>
+      <section class="panel" aria-label="Course enrollment and excuses">
+        <div class="inbox-heading">
+          <h2>Course responses</h2>
+          <button id="refresh-admin-courses" class="secondary" type="button">Refresh</button>
+        </div>
+        <p id="admin-courses-feedback" class="feedback" role="status" aria-live="polite" hidden></p>
+        <div id="admin-courses-list" class="course-list"></div>
+      </section>
+    </section>
+
     <section id="inbox-panel" class="panel" aria-label="HR messages" hidden>
       <div class="inbox-heading">
         <h2>Messages</h2>

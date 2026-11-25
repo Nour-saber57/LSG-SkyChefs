@@ -6,7 +6,8 @@
 }
 
 #holiday-requests,
-#insurance-requests {
+#insurance-requests,
+.course-list {
   display: grid;
   gap: 1rem;
   margin: 1rem 0;
@@ -20,6 +21,28 @@
   border: 1px solid #dce3ed;
   border-radius: 0.75rem;
   background: #fff;
+}
+
+.course-card {
+  padding: 1rem;
+  border: 1px solid #dce3ed;
+  border-radius: 0.75rem;
+  background: #fff;
+}
+
+.course-card h3,
+.course-card h4,
+.course-card p {
+  margin: 0.4rem 0;
+}
+
+.course-image {
+  display: block;
+  width: 100%;
+  max-height: 18rem;
+  margin-bottom: 1rem;
+  border-radius: 0.5rem;
+  object-fit: cover;
 }
 
 #holiday-requests h3,
@@ -40,7 +63,9 @@ body {
 }
 
 button,
-textarea {
+textarea,
+input,
+select {
   font: inherit;
 }
 
@@ -138,7 +163,9 @@ textarea {
 }
 
 input[type="date"],
-input[type="text"] {
+input[type="text"],
+input[type="file"],
+select {
   display: block;
   width: 100%;
   margin: 0.5rem 0 1rem;
