@@ -128,6 +128,12 @@ class LoginLimit(Base):
 def initialize_database(engine):
     with engine.begin() as connection:
         Base.metadata.create_all(connection)
+        course_columns = {column["name"] for column in inspect(connection).get_columns("courses")}
+        if "end_date" not in course_columns:
+            connection.exec_driver_sql("ALTER TABLE courses ADD COLUMN end_date VARCHAR(10)")
+        if "archived_at" not in course_columns:
+            connection.exec_driver_sql("ALTER TABLE courses ADD COLUMN archived_at INTEGER")
+        connection.exec_driver_sql("CREATE INDEX IF NOT EXISTS ix_courses_archived_at ON courses (archived_at)")
         insurance_columns = {
             column["name"]
             for column in inspect(connection).get_columns("insurance_requests")
@@ -360,7 +366,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         CORSMiddleware,
         allow_origins=settings.frontend_origins,
         allow_credentials=True,
-        allow_methods=["GET", "POST", "PUT"],
+        allow_methods=["GET", "POST", "PUT", "DELETE"],
         allow_headers=[
             "Content-Type",
             "X-CSRF-Token",
