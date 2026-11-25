@@ -12,3 +12,12 @@ __pycache__/
 # Frontend
 node_modules/
 dist/
+# Database
+*.db
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite3
+
+# Uploaded files
+backend/course_images/
