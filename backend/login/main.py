@@ -51,6 +51,10 @@ else:
     from ..insurance.changing import create_insurance_change_router
     from ..insurance.insuranceRequest import create_insurance_router
 
+if __package__ == "login":
+    from courses.activites import create_activities_router
+else:
+    from ..courses.activites import create_activities_router
 # --------------------------------------------------
 # Configuration
 # --------------------------------------------------
@@ -495,6 +499,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     app.include_router(
         create_salary_router(
+            get_db=get_db,
+            require_user=require_user,
+            require_admin=require_admin,
+            require_csrf=require_csrf,
+        )
+    )
+    app.include_router(
+        create_activities_router(
             get_db=get_db,
             require_user=require_user,
             require_admin=require_admin,
@@ -996,6 +1008,22 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return {
             "status": "ok"
         }
+
+    @app.get(
+        "/activities",
+        response_class=HTMLResponse,
+        include_in_schema=False,
+    )
+    def activities_page(user: User = Depends(require_user)):
+        return workspace_page()
+
+    @app.get(
+        "/admin/activities",
+        response_class=HTMLResponse,
+        include_in_schema=False,
+    )
+    def admin_activities_page(user: User = Depends(require_admin)):
+        return workspace_page()
 
     return app
 
