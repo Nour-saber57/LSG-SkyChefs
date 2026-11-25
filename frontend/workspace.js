@@ -99,8 +99,11 @@ async function request(path, options = {}) {
   }
   if (!response.ok) {
     const result = await response.json().catch(() => ({}));
-    throw new Error(typeof result.detail === "string" && response.status < 500
-      ? result.detail : "Could not complete the request. Please try again.");
+    const detail = Array.isArray(result.detail)
+      ? result.detail.map((issue) => issue.msg).filter(Boolean).join(" ")
+      : result.detail;
+    throw new Error(typeof detail === "string" && response.status < 500
+      ? detail : "Could not complete the request. Please try again.");
   }
   return response.status === 204 ? null : response.json();
 }
@@ -506,7 +509,10 @@ function addCourseDetails(container, course) {
   title.textContent = course.title;
   const info = document.createElement("p");
   info.className = "muted";
-  info.textContent = [course.start_date, course.duration, course.location].join(" · ");
+  const dates = course.end_date
+    ? `${course.start_date} – ${course.end_date}`
+    : course.start_date;
+  info.textContent = [dates, course.duration, course.location].join(" · ");
   const description = document.createElement("p");
   description.className = "message-body";
   description.textContent = course.description;
@@ -587,19 +593,39 @@ function appendEmployeeCourse(course) {
   byId("courses-list").append(card);
 }
 
-async function loadCourses() {
+const coursePageSize = 25;
+const moreCourses = byId("more-courses");
+let courseOffset = 0;
+let loadingCourses = false;
+
+async function loadCourses(append = false) {
   const refreshCourses = byId("refresh-courses");
+  if (loadingCourses) return;
+  loadingCourses = true;
+  const offset = append ? courseOffset : 0;
   if (refreshCourses) refreshCourses.disabled = true;
+  moreCourses.disabled = true;
   feedback("courses-feedback", "Loading courses…");
   try {
-    const courses = await request("/api/v1/courses");
-    byId("courses-list").replaceChildren();
+    const query = new URLSearchParams({
+      offset: String(offset),
+      limit: String(coursePageSize),
+    });
+    const courses = await request("/api/v1/courses?" + query);
+    if (!append) byId("courses-list").replaceChildren();
     courses.forEach(appendEmployeeCourse);
-    feedback("courses-feedback", courses.length ? "" : "No courses are available yet.");
+    courseOffset = offset + courses.length;
+    moreCourses.hidden = courses.length < coursePageSize;
+    feedback(
+      "courses-feedback",
+      courses.length ? "" : append ? "No more courses." : "No courses are available yet.",
+    );
   } catch (error) {
     feedback("courses-feedback", error.message, "error");
   } finally {
     if (refreshCourses) refreshCourses.disabled = false;
+    moreCourses.disabled = false;
+    loadingCourses = false;
   }
 }
 
@@ -607,68 +633,170 @@ function appendAdminCourse(course) {
   const card = document.createElement("article");
   card.className = "course-card";
   addCourseDetails(card, course);
+
+  const status = document.createElement("p");
+  status.className = "muted";
+  status.textContent = course.archived_at ? "Archived" : "Active";
+  card.append(status);
+
+  const counts = document.createElement("p");
+  counts.className = "muted";
+  counts.textContent = `${course.response_count} responses · ${course.enrolled_count} enrolled · ${course.excused_count} excused`;
+  card.append(counts);
+
   const responsesTitle = document.createElement("h4");
   responsesTitle.textContent = "Employee responses";
   card.append(responsesTitle);
-  if (!course.decisions.length) {
-    const empty = document.createElement("p");
-    empty.className = "muted";
-    empty.textContent = "No employees have responded yet.";
-    card.append(empty);
-  } else {
-    const list = document.createElement("ul");
-    for (const response of course.decisions) {
-      const item = document.createElement("li");
-      item.textContent = `${response.employee_name} — ${response.decision}`
-        + (response.reason ? `: ${response.reason}` : "");
-      list.append(item);
+
+  const responseList = document.createElement("ul");
+  const responseFeedback = document.createElement("p");
+  responseFeedback.className = "feedback";
+  responseFeedback.setAttribute("role", "status");
+  responseFeedback.hidden = true;
+  const moreResponses = document.createElement("button");
+  moreResponses.type = "button";
+  moreResponses.className = "secondary";
+  moreResponses.textContent = "Load more responses";
+  moreResponses.hidden = true;
+  let responseOffset = 0;
+  let loadingResponses = false;
+
+  async function loadResponses(append = false) {
+    if (loadingResponses) return;
+    loadingResponses = true;
+    moreResponses.disabled = true;
+    feedbackForElement(responseFeedback, "Loading employee responses…");
+    try {
+      const query = new URLSearchParams({
+        offset: String(append ? responseOffset : 0),
+        limit: "50",
+      });
+      const responses = await request(
+        `/api/v1/admin/courses/${course.id}/decisions?${query}`,
+      );
+      if (!append) responseList.replaceChildren();
+      for (const response of responses) {
+        const item = document.createElement("li");
+        item.textContent = `${response.employee_name} — ${response.decision}`
+          + (response.reason ? `: ${response.reason}` : "");
+        responseList.append(item);
+      }
+      responseOffset = (append ? responseOffset : 0) + responses.length;
+      moreResponses.hidden = responses.length < 50;
+      feedbackForElement(
+        responseFeedback,
+        responses.length ? "" : append ? "No more responses." : "No employees have responded yet.",
+      );
+    } catch (error) {
+      feedbackForElement(responseFeedback, error.message, "error");
+    } finally {
+      moreResponses.disabled = false;
+      loadingResponses = false;
     }
-    card.append(list);
   }
+
+  card.append(responseList, responseFeedback, moreResponses);
+  if (course.response_count) loadResponses();
+
+  moreResponses.addEventListener("click", () => loadResponses(true));
+
+  if (!course.archived_at) {
+    const archiveButton = document.createElement("button");
+    archiveButton.type = "button";
+    archiveButton.className = "secondary";
+    archiveButton.textContent = "Archive course";
+    archiveButton.addEventListener("click", async () => {
+      archiveButton.disabled = true;
+      try {
+        const { csrf_token } = await request("/api/v1/auth/csrf");
+        await request(`/api/v1/admin/courses/${course.id}`, {
+          method: "DELETE",
+          headers: { "X-CSRF-Token": csrf_token },
+        });
+        await loadAdminCourses();
+      } catch (error) {
+        feedbackForElement(responseFeedback, error.message, "error");
+      } finally {
+        archiveButton.disabled = false;
+      }
+    });
+    card.append(archiveButton);
+  }
+
   byId("admin-courses-list").append(card);
 }
 
-async function loadAdminCourses() {
-  byId("refresh-admin-courses").disabled = true;
+function feedbackForElement(field, message, kind = "info") {
+  field.textContent = message;
+  field.dataset.kind = kind;
+  field.hidden = !message;
+}
+
+const adminCoursePageSize = 25;
+const moreAdminCourses = byId("more-admin-courses");
+const courseArchiveFilter = byId("course-archive-filter");
+let adminCourseOffset = 0;
+let loadingAdminCourses = false;
+
+async function loadAdminCourses(append = false) {
+  if (loadingAdminCourses) return;
+  loadingAdminCourses = true;
+  const offset = append ? adminCourseOffset : 0;
+  const refreshAdminCourses = byId("refresh-admin-courses");
+  refreshAdminCourses.disabled = true;
+  courseArchiveFilter.disabled = true;
+  moreAdminCourses.disabled = true;
   feedback("admin-courses-feedback", "Loading course responses…");
   try {
-    const courses = await request("/api/v1/admin/courses");
-    byId("admin-courses-list").replaceChildren();
+    const query = new URLSearchParams({
+      archived: courseArchiveFilter.value,
+      offset: String(offset),
+      limit: String(adminCoursePageSize),
+    });
+    const courses = await request("/api/v1/admin/courses?" + query);
+    if (!append) byId("admin-courses-list").replaceChildren();
     courses.forEach(appendAdminCourse);
-    feedback("admin-courses-feedback", courses.length ? "" : "No courses have been added.");
+    adminCourseOffset = offset + courses.length;
+    moreAdminCourses.hidden = courses.length < adminCoursePageSize;
+    feedback(
+      "admin-courses-feedback",
+      courses.length ? "" : append ? "No more courses." : "No courses have been added.",
+    );
   } catch (error) {
     feedback("admin-courses-feedback", error.message, "error");
   } finally {
-    byId("refresh-admin-courses").disabled = false;
+    refreshAdminCourses.disabled = false;
+    courseArchiveFilter.disabled = false;
+    moreAdminCourses.disabled = false;
+    loadingAdminCourses = false;
   }
 }
 
-byId("refresh-courses").addEventListener("click", loadCourses);
-byId("refresh-admin-courses").addEventListener("click", loadAdminCourses);
+byId("refresh-courses").addEventListener("click", () => loadCourses());
+moreCourses.addEventListener("click", () => loadCourses(true));
+byId("refresh-admin-courses").addEventListener("click", () => loadAdminCourses());
+moreAdminCourses.addEventListener("click", () => loadAdminCourses(true));
+courseArchiveFilter.addEventListener("change", () => loadAdminCourses());
 byId("course-form").addEventListener("submit", async (event) => {
   event.preventDefault();
   const form = byId("course-form");
   const submit = form.querySelector("button");
+  const startDate = byId("course-start-date").value;
+  const endDate = byId("course-end-date").value;
+  if (endDate < startDate) {
+    feedback("course-form-feedback", "The end date must be on or after the start date.", "error");
+    byId("course-end-date").focus();
+    return;
+  }
   submit.disabled = true;
   feedback("course-form-feedback", "");
   try {
     const { csrf_token } = await request("/api/v1/auth/csrf");
-    const response = await fetch("/api/v1/admin/courses", {
+    await request("/api/v1/admin/courses", {
       method: "POST",
-      credentials: "same-origin",
-      cache: "no-store",
       headers: { "X-CSRF-Token": csrf_token },
       body: new FormData(form),
     });
-    if (response.status === 401) {
-      location.replace("/");
-      throw new Error("Your session ended. Please sign in again.");
-    }
-    if (!response.ok) {
-      const result = await response.json().catch(() => ({}));
-      throw new Error(typeof result.detail === "string" && response.status < 500
-        ? result.detail : "Could not create the course. Please try again.");
-    }
     form.reset();
     feedback("course-form-feedback", "Course created.", "success");
     await loadAdminCourses();
