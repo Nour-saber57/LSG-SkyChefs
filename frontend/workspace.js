@@ -5,6 +5,7 @@ const pages = {
     description: "Access your HR services.",
     next: ["/hr-services", "HR Services", "Browse the services available to employees."],
     nextSecondary: ["/courses", "Courses", "View available employee courses and respond."],
+    nextTertiary: ["/activities", "Activities", "View activities and programs shared with you."],
   },
   "/hr-services": {
     title: "HR Services",
@@ -45,6 +46,12 @@ const pages = {
     back: ["/dashboard", "Employee dashboard"],
     panel: "courses-panel",
   },
+  "/activities": {
+    title: "Activities and programs",
+    description: "View activities and programs shared with you.",
+    back: ["/dashboard", "Employee dashboard"],
+    panel: "activities-panel",
+  },
   "/admin/dashboard": {
     title: "Admin dashboard",
     description: "Review requests and inquiries submitted by employees.",
@@ -52,6 +59,7 @@ const pages = {
     nextSecondary: ["/admin/holiday-requests", "Holiday requests", "Review holiday requests submitted by employees."],
     nextTertiary: ["/admin/insurance-requests", "Insurance requests", "Preview insurance requests submitted by employees."],
     nextQuaternary: ["/admin/courses", "Courses", "Add courses and review employee responses."],
+    nextActivity: ["/admin/activities", "Activities", "Publish activities and programs for all or selected employees."],
   },
   "/admin/hr-inbox": {
     title: "HR Inbox",
@@ -76,6 +84,12 @@ const pages = {
     description: "Add courses and review which employees enrolled or excused themselves.",
     back: ["/admin/dashboard", "Admin dashboard"],
     panel: "admin-courses-panel",
+  },
+  "/admin/activities": {
+    title: "Manage activities",
+    description: "Publish activities and programs for all employees or selected people.",
+    back: ["/admin/dashboard", "Admin dashboard"],
+    panel: "admin-activities-panel",
   },
 };
 
@@ -160,6 +174,11 @@ function showPage() {
     const link = byId("next-quaternary");
     [link.href, link.textContent, byId("next-quaternary-description").textContent] = page.nextQuaternary;
     byId("quaternary-navigation-card").hidden = false;
+  }
+  if (page.nextActivity) {
+    const link = byId("next-activity");
+    [link.href, link.textContent, byId("next-activity-description").textContent] = page.nextActivity;
+    byId("activity-navigation-card").hidden = false;
   }
   if (page.panel) byId(page.panel).hidden = false;
 }
@@ -807,6 +826,187 @@ byId("course-form").addEventListener("submit", async (event) => {
   }
 });
 
+function appendActivity(container, activity, admin = false) {
+  const card = document.createElement("article");
+  card.className = "activity-card";
+
+  const title = document.createElement("h3");
+  title.textContent = activity.title;
+  const details = document.createElement("p");
+  details.className = "muted";
+  details.textContent = [
+    activity.kind === "program" ? "Program" : "Activity",
+    `${activity.start_date} – ${activity.end_date}`,
+    activity.location,
+  ].join(" · ");
+  const description = document.createElement("p");
+  description.className = "message-body";
+  description.textContent = activity.description;
+  card.append(title, details, description);
+
+  if (admin) {
+    const audience = document.createElement("p");
+    audience.className = "muted";
+    audience.textContent = activity.all_employees
+      ? "Audience: All employees"
+      : `Audience: ${activity.employee_names.join(", ")}`;
+    card.append(audience);
+
+    if (activity.archived_at === null) {
+      const archive = document.createElement("button");
+      archive.type = "button";
+      archive.className = "secondary";
+      archive.textContent = "Archive activity";
+      archive.addEventListener("click", async () => {
+        archive.disabled = true;
+        try {
+          const { csrf_token } = await request("/api/v1/auth/csrf");
+          await request(`/api/v1/admin/activities/${activity.id}`, {
+            method: "DELETE",
+            headers: { "X-CSRF-Token": csrf_token },
+          });
+          await loadAdminActivities();
+        } catch (error) {
+          feedback("admin-activities-feedback", error.message, "error");
+        } finally {
+          archive.disabled = false;
+        }
+      });
+      card.append(archive);
+    } else {
+      const status = document.createElement("p");
+      status.className = "muted";
+      status.textContent = "Archived";
+      card.append(status);
+    }
+  }
+
+  container.append(card);
+}
+
+async function loadActivities() {
+  const refresh = byId("refresh-activities");
+  refresh.disabled = true;
+  feedback("activities-feedback", "Loading activities…");
+  try {
+    const activities = await request("/api/v1/activities?limit=100");
+    byId("activities-list").replaceChildren();
+    activities.forEach((activity) => appendActivity(byId("activities-list"), activity));
+    feedback(
+      "activities-feedback",
+      activities.length ? "" : "No activities or programs have been shared with you.",
+    );
+  } catch (error) {
+    feedback("activities-feedback", error.message, "error");
+  } finally {
+    refresh.disabled = false;
+  }
+}
+
+const activityAudience = byId("activity-audience");
+const activityEmployeePicker = byId("activity-employee-picker");
+const activityArchiveFilter = byId("activity-archive-filter");
+
+activityAudience.addEventListener("change", () => {
+  activityEmployeePicker.hidden = activityAudience.value !== "selected";
+});
+
+async function loadActivityEmployees() {
+  feedback("activity-employees-feedback", "Loading employees…");
+  try {
+    const employees = await request("/api/v1/admin/activities/recipients");
+    const list = byId("activity-employees");
+    list.replaceChildren();
+    for (const employee of employees) {
+      const label = document.createElement("label");
+      label.className = "employee-option";
+      const checkbox = document.createElement("input");
+      checkbox.type = "checkbox";
+      checkbox.name = "employee_ids";
+      checkbox.value = String(employee.id);
+      const name = document.createElement("span");
+      name.textContent = `${employee.name} (${employee.identity})`;
+      label.append(checkbox, name);
+      list.append(label);
+    }
+    feedback(
+      "activity-employees-feedback",
+      employees.length ? "" : "There are no active employees to select.",
+    );
+  } catch (error) {
+    feedback("activity-employees-feedback", error.message, "error");
+  }
+}
+
+async function loadAdminActivities() {
+  const refresh = byId("refresh-admin-activities");
+  refresh.disabled = true;
+  activityArchiveFilter.disabled = true;
+  feedback("admin-activities-feedback", "Loading activities…");
+  try {
+    const query = new URLSearchParams({ archived: activityArchiveFilter.value, limit: "100" });
+    const activities = await request("/api/v1/admin/activities?" + query);
+    const list = byId("admin-activities-list");
+    list.replaceChildren();
+    activities.forEach((activity) => appendActivity(list, activity, true));
+    feedback(
+      "admin-activities-feedback",
+      activities.length ? "" : "No activities or programs have been published.",
+    );
+  } catch (error) {
+    feedback("admin-activities-feedback", error.message, "error");
+  } finally {
+    refresh.disabled = false;
+    activityArchiveFilter.disabled = false;
+  }
+}
+
+byId("refresh-activities").addEventListener("click", () => loadActivities());
+byId("refresh-admin-activities").addEventListener("click", () => loadAdminActivities());
+activityArchiveFilter.addEventListener("change", () => loadAdminActivities());
+byId("activity-form").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const form = byId("activity-form");
+  const submit = form.querySelector('button[type="submit"]');
+  const startDate = byId("activity-start-date").value;
+  const endDate = byId("activity-end-date").value;
+  if (endDate < startDate) {
+    feedback("activity-form-feedback", "The end date must be on or after the start date.", "error");
+    byId("activity-end-date").focus();
+    return;
+  }
+
+  const employeeIds = [...form.querySelectorAll('input[name="employee_ids"]:checked')]
+    .map((checkbox) => Number(checkbox.value));
+  if (activityAudience.value === "selected" && employeeIds.length === 0) {
+    feedback("activity-form-feedback", "Select at least one employee for this activity.", "error");
+    byId("activity-employees").querySelector("input")?.focus();
+    return;
+  }
+
+  submit.disabled = true;
+  feedback("activity-form-feedback", "");
+  try {
+    await post("/api/v1/admin/activities", {
+      title: byId("activity-title").value.trim(),
+      kind: byId("activity-kind").value,
+      description: byId("activity-description").value.trim(),
+      start_date: startDate,
+      end_date: endDate,
+      location: byId("activity-location").value.trim(),
+      employee_ids: activityAudience.value === "selected" ? employeeIds : null,
+    });
+    form.reset();
+    activityEmployeePicker.hidden = true;
+    feedback("activity-form-feedback", "Activity published.", "success");
+    await loadAdminActivities();
+  } catch (error) {
+    feedback("activity-form-feedback", error.message, "error");
+  } finally {
+    submit.disabled = false;
+  }
+});
+
 async function start() {
   showPage();
   try {
@@ -822,6 +1022,10 @@ async function start() {
   }
   if (page.panel === "courses-panel") await loadCourses();
   if (page.panel === "admin-courses-panel") await loadAdminCourses();
+  if (page.panel === "activities-panel") await loadActivities();
+  if (page.panel === "admin-activities-panel") {
+    await Promise.all([loadActivityEmployees(), loadAdminActivities()]);
+  }
 }
 
 start();

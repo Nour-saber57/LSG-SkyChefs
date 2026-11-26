@@ -47,6 +47,11 @@
       <p id="next-quaternary-description" class="muted"></p>
     </section>
 
+    <section id="activity-navigation-card" class="panel" hidden>
+      <a id="next-activity" class="service-link" href="/"></a>
+      <p id="next-activity-description" class="muted"></p>
+    </section>
+
     <section id="salary-panel" class="panel" hidden>
       <form id="salary-form" method="post">
         <label for="message">Your message</label>
@@ -141,6 +146,16 @@
       </div>
       <p id="courses-feedback" class="feedback" role="status" aria-live="polite" hidden></p>
       <div id="courses-list" class="course-list"></div>
+      <button id="more-courses" class="secondary" type="button" hidden>Load more courses</button>
+    </section>
+
+    <section id="activities-panel" class="panel" hidden>
+      <div class="inbox-heading">
+        <h2>Activities and programs</h2>
+        <button id="refresh-activities" class="secondary" type="button">Refresh</button>
+      </div>
+      <p id="activities-feedback" class="feedback" role="status" aria-live="polite" hidden></p>
+      <div id="activities-list" class="activity-list"></div>
     </section>
 
     <section id="admin-courses-panel" hidden>
@@ -153,6 +168,8 @@
           <textarea id="course-description" name="description" rows="5" maxlength="5000" required></textarea>
           <label for="course-start-date">Start date</label>
           <input id="course-start-date" name="start_date" type="date" required>
+          <label for="course-end-date">End date</label>
+          <input id="course-end-date" name="end_date" type="date" required>
           <label for="course-duration">Duration</label>
           <input id="course-duration" name="duration" type="text" maxlength="100" placeholder="e.g. 2 days" required>
           <label for="course-location">Location</label>
@@ -169,7 +186,61 @@
           <button id="refresh-admin-courses" class="secondary" type="button">Refresh</button>
         </div>
         <p id="admin-courses-feedback" class="feedback" role="status" aria-live="polite" hidden></p>
+        <label for="course-archive-filter">Course history</label>
+        <select id="course-archive-filter">
+          <option value="false">Active courses</option>
+          <option value="true">Archived courses</option>
+        </select>
         <div id="admin-courses-list" class="course-list"></div>
+        <button id="more-admin-courses" class="secondary" type="button" hidden>Load more courses</button>
+      </section>
+    </section>
+
+    <section id="admin-activities-panel" hidden>
+      <section class="panel">
+        <h2>Create an activity or program</h2>
+        <form id="activity-form">
+          <label for="activity-title">Title</label>
+          <input id="activity-title" name="title" type="text" maxlength="150" required>
+          <label for="activity-kind">Type</label>
+          <select id="activity-kind" name="kind" required>
+            <option value="activity">Activity</option>
+            <option value="program">Program</option>
+          </select>
+          <label for="activity-description">Details</label>
+          <textarea id="activity-description" name="description" rows="5" maxlength="5000" required></textarea>
+          <label for="activity-start-date">Start date</label>
+          <input id="activity-start-date" name="start_date" type="date" required>
+          <label for="activity-end-date">End date</label>
+          <input id="activity-end-date" name="end_date" type="date" required>
+          <label for="activity-location">Location</label>
+          <input id="activity-location" name="location" type="text" maxlength="150" required>
+          <label for="activity-audience">Who can see this?</label>
+          <select id="activity-audience" name="audience">
+            <option value="all">All employees</option>
+            <option value="selected">Selected employees</option>
+          </select>
+          <div id="activity-employee-picker" hidden>
+            <p class="muted">Choose one or more employees.</p>
+            <p id="activity-employees-feedback" class="feedback" role="status" aria-live="polite" hidden></p>
+            <div id="activity-employees" class="employee-picker"></div>
+          </div>
+          <button type="submit">Publish activity</button>
+          <p id="activity-form-feedback" class="feedback" role="status" aria-live="polite" hidden></p>
+        </form>
+      </section>
+      <section class="panel">
+        <div class="inbox-heading">
+          <h2>Published activities and programs</h2>
+          <button id="refresh-admin-activities" class="secondary" type="button">Refresh</button>
+        </div>
+        <p id="admin-activities-feedback" class="feedback" role="status" aria-live="polite" hidden></p>
+        <label for="activity-archive-filter">Activity history</label>
+        <select id="activity-archive-filter">
+          <option value="false">Active activities</option>
+          <option value="true">Archived activities</option>
+        </select>
+        <div id="admin-activities-list" class="activity-list"></div>
       </section>
     </section>
 
@@ -211,139 +282,6 @@
       <ol id="insurance-changes"></ol>
       <button id="load-more-insurance-changes" class="secondary" type="button" hidden>Load more</button>
     </section>
-    <section id="courses-panel" class="panel" hidden>
-
-    <div class="inbox-heading">
-        <h2>Available courses</h2>
-
-        <button id="refresh-courses"
-                class="secondary"
-                type="button">
-            Refresh
-        </button>
-    </div>
-
-    <p id="courses-feedback"
-       class="feedback"
-       role="status"
-       hidden>
-    </p>
-
-    <div id="courses-list" class="course-list"></div>
-
-    <button id="more-courses"
-            class="secondary"
-            type="button"
-            hidden>
-        Load more courses
-    </button>
-    <section id="admin-courses-panel" hidden>
-
-    <section class="panel">
-
-        <h2>Add a course</h2>
-
-        <form id="course-form"
-              enctype="multipart/form-data">
-
-            <label for="course-title">Course title</label>
-            <input id="course-title"
-                   name="title"
-                   type="text"
-                   maxlength="150"
-                   required>
-
-            <label for="course-description">Details</label>
-            <textarea id="course-description"
-                      name="description"
-                      rows="5"
-                      maxlength="5000"
-                      required></textarea>
-
-            <label for="course-start-date">Start date</label>
-            <input id="course-start-date"
-                   name="start_date"
-                   type="date"
-                   required>
-
-            <label for="course-end-date">End date</label>
-            <input id="course-end-date"
-                   name="end_date"
-                   type="date"
-                   required>
-
-            <label for="course-duration">Duration</label>
-            <input id="course-duration"
-                   name="duration"
-                   type="text"
-                   placeholder="e.g. 2 days"
-                   maxlength="100"
-                   required>
-
-            <label for="course-location">Location</label>
-            <input id="course-location"
-                   name="location"
-                   maxlength="150"
-                   required>
-
-            <label for="course-image">Course image</label>
-            <input id="course-image"
-                   name="image"
-                   type="file"
-                   accept="image/jpeg,image/png,image/webp">
-
-            <button type="submit">Add course</button>
-
-            <p id="course-form-feedback"
-               class="feedback"
-               role="status"
-               hidden></p>
-
-        </form>
-
-    </section>
-
-    <section class="panel">
-
-        <div class="inbox-heading">
-            <h2>Course responses</h2>
-
-            <button id="refresh-admin-courses"
-                    class="secondary"
-                    type="button">
-                Refresh
-            </button>
-        </div>
-
-        <p id="admin-courses-feedback"
-           class="feedback"
-           role="status"
-           hidden></p>
-
-        <label for="course-archive-filter">
-            Course history
-        </label>
-
-        <select id="course-archive-filter">
-            <option value="false">Active courses</option>
-            <option value="true">Archived courses</option>
-        </select>
-
-        <div id="admin-courses-list"
-             class="course-list"></div>
-
-        <button id="more-admin-courses"
-                class="secondary"
-                type="button"
-                hidden>
-            Load more courses
-        </button>
-
-    </section>
-
-</section>
-
-</section>
   </main>
 </body>
 </html>
