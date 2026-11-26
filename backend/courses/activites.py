@@ -19,6 +19,7 @@ from sqlalchemy import (
     Integer,
     String,
     Text,
+    or_,
     select,
     update,
 )
@@ -26,7 +27,7 @@ from sqlalchemy import (
 from sqlalchemy.orm import Mapped, Session, mapped_column
 
 
-if __package__ == "activities":
+if __package__ == "courses":
     from database import Base, User
 else:
     from ..database import Base, User
@@ -77,6 +78,21 @@ class Activity(Base):
     )
 
 
+class ActivityRecipient(Base):
+
+    __tablename__ = "activity_recipients"
+
+    activity_id: Mapped[int] = mapped_column(
+        ForeignKey("activities.id"),
+        primary_key=True,
+    )
+
+    employee_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id"),
+        primary_key=True,
+    )
+
+
 # ==========================================
 # REQUEST VALIDATION
 # ==========================================
@@ -118,6 +134,8 @@ class ActivityCreate(BaseModel):
         ),
     ]
 
+    employee_ids: list[int] | None = None
+
     @model_validator(mode="after")
     def validate_dates(self):
 
@@ -127,6 +145,14 @@ class ActivityCreate(BaseModel):
                 "End date must be on or after start date."
             )
 
+        if self.employee_ids is not None and (
+            not self.employee_ids
+            or len(set(self.employee_ids)) != len(self.employee_ids)
+        ):
+            raise ValueError(
+                "Select at least one employee without duplicate selections."
+            )
+
         return self
 
 
@@ -134,11 +160,24 @@ class ActivityCreate(BaseModel):
 # RESPONSE MODELS
 # ==========================================
 
-class ActivityView(ActivityCreate):
+class ActivityView(BaseModel):
 
     model_config = ConfigDict(from_attributes=True)
 
     id: int
+    title: str
+    kind: Literal["activity", "program"]
+    description: str
+    start_date: date
+    end_date: date
+    location: str
+
+
+class ActivityEmployeeView(BaseModel):
+
+    id: int
+    name: str
+    identity: str
 
 
 class AdminActivityView(ActivityView):
@@ -149,10 +188,55 @@ class AdminActivityView(ActivityView):
 
     archived_at: int | None
 
+    employee_ids: list[int]
+
+    employee_names: list[str]
+
+    all_employees: bool
+
 
 # ==========================================
 # API ROUTER
 # ==========================================
+
+def _admin_activity_views(activities: list[Activity], db: Session):
+    activity_ids = [activity.id for activity in activities]
+    recipients_by_activity: dict[int, list[tuple[int, str]]] = {}
+    if activity_ids:
+        rows = db.execute(
+            select(
+                ActivityRecipient.activity_id,
+                User.id,
+                User.name,
+            )
+            .join(User, User.id == ActivityRecipient.employee_id)
+            .where(ActivityRecipient.activity_id.in_(activity_ids))
+            .order_by(User.name, User.id)
+        )
+        for activity_id, employee_id, employee_name in rows:
+            recipients_by_activity.setdefault(activity_id, []).append(
+                (employee_id, employee_name)
+            )
+
+    return [
+        AdminActivityView(
+            **ActivityView.model_validate(activity).model_dump(),
+            created_by=activity.created_by,
+            created_at=activity.created_at,
+            archived_at=activity.archived_at,
+            employee_ids=[
+                employee_id
+                for employee_id, _ in recipients_by_activity.get(activity.id, [])
+            ],
+            employee_names=[
+                employee_name
+                for _, employee_name in recipients_by_activity.get(activity.id, [])
+            ],
+            all_employees=activity.id not in recipients_by_activity,
+        )
+        for activity in activities
+    ]
+
 
 def create_activities_router(
     get_db,
@@ -181,18 +265,79 @@ def create_activities_router(
     ):
 
         entry = Activity(
-            **payload.model_dump(),
+            **payload.model_dump(exclude={"employee_ids"}),
             created_by=admin.id,
             created_at=int(time.time())
         )
 
         db.add(entry)
+        db.flush()
 
+        selected_employees = []
+        if payload.employee_ids is not None:
+            selected_employees = db.scalars(
+                select(User).where(
+                    User.id.in_(payload.employee_ids),
+                    User.role == "user",
+                    User.active.is_(True),
+                )
+            ).all()
+            if len(selected_employees) != len(payload.employee_ids):
+                db.rollback()
+                raise HTTPException(
+                    status_code=422,
+                    detail="One or more selected employees are unavailable.",
+                )
+            db.add_all(
+                ActivityRecipient(
+                    activity_id=entry.id,
+                    employee_id=employee.id,
+                )
+                for employee in selected_employees
+            )
         db.commit()
 
         db.refresh(entry)
 
-        return entry
+        return AdminActivityView(
+            **ActivityView.model_validate(entry).model_dump(),
+            created_by=entry.created_by,
+            created_at=entry.created_at,
+            archived_at=entry.archived_at,
+            employee_ids=payload.employee_ids or [],
+            employee_names=sorted(employee.name for employee in selected_employees),
+            all_employees=payload.employee_ids is None,
+        )
+
+
+    # ======================================
+    # ADMIN: SELECTABLE EMPLOYEES
+    # ======================================
+
+    @router.get(
+        "/api/v1/admin/activities/recipients",
+        response_model=list[ActivityEmployeeView],
+        dependencies=[Depends(require_admin)],
+    )
+    def activity_recipients(
+        db: Session = Depends(get_db),
+    ):
+        employees = db.scalars(
+            select(User)
+            .where(
+                User.role == "user",
+                User.active.is_(True),
+            )
+            .order_by(User.name, User.id)
+        ).all()
+        return [
+            ActivityEmployeeView(
+                id=employee.id,
+                name=employee.name,
+                identity=employee.identity,
+            )
+            for employee in employees
+        ]
 
 
     # ======================================
@@ -202,16 +347,29 @@ def create_activities_router(
     @router.get(
         "/api/v1/activities",
         response_model=list[ActivityView],
-        dependencies=[Depends(require_user)],
     )
     def employee_activities(
+        employee: User = Depends(require_user),
         db: Session = Depends(get_db),
         limit: int = Query(25, ge=1, le=100),
         before_id: int | None = Query(None, gt=0),
     ):
 
+        public_activity = ~select(
+            ActivityRecipient.activity_id
+        ).where(
+            ActivityRecipient.activity_id == Activity.id
+        ).exists()
+        assigned_activity = select(
+            ActivityRecipient.activity_id
+        ).where(
+            ActivityRecipient.activity_id == Activity.id,
+            ActivityRecipient.employee_id == employee.id,
+        ).exists()
+
         query = select(Activity).where(
-            Activity.archived_at.is_(None)
+            Activity.archived_at.is_(None),
+            or_(public_activity, assigned_activity),
         )
 
         if before_id is not None:
@@ -220,11 +378,12 @@ def create_activities_router(
                 Activity.id < before_id
             )
 
-        return db.scalars(
+        activities = db.scalars(
             query.order_by(
                 Activity.id.desc()
             ).limit(limit)
         ).all()
+        return activities
 
 
     # ======================================
@@ -255,11 +414,12 @@ def create_activities_router(
                 Activity.id < before_id
             )
 
-        return db.scalars(
+        activities = db.scalars(
             query.order_by(
                 Activity.id.desc()
             ).limit(limit)
         ).all()
+        return _admin_activity_views(activities, db)
 
 
     # ======================================
